@@ -1,0 +1,61 @@
+name: npm — release
+
+# Changesets: opens "version packages" PRs when .changeset/* exists; publishes to npm when
+# versions on main are bumped and there are no pending changesets.
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.3
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Create Release Pull Request or Publish to npm
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          version: pnpm run version-packages
+          publish: pnpm run release
+          title: "chore: version packages"
+          commit: "chore: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
