@@ -1,0 +1,79 @@
+import type {
+  ColumnInfo,
+  QueryResult,
+  StructuredQuery,
+  TraceResult
+} from "@wide-events/internal";
+
+export interface WideEventsClientOptions {
+  url: string;
+  fetchImpl?: typeof fetch;
+}
+
+interface ColumnsResponse {
+  columns: ColumnInfo[];
+}
+
+export class WideEventsClient {
+  private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(options: WideEventsClientOptions) {
+    this.baseUrl = options.url.replace(/\/$/u, "");
+    this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  async query(request: StructuredQuery): Promise<QueryResult> {
+    return await this.postJson<QueryResult>("/query", request);
+  }
+
+  async sql(sql: string): Promise<QueryResult> {
+    return await this.postJson<QueryResult>("/sql", { sql });
+  }
+
+  async getColumns(): Promise<ColumnInfo[]> {
+    const response = await this.getJson<ColumnsResponse>("/columns");
+    return response.columns;
+  }
+
+  async getTrace(traceId: string): Promise<TraceResult> {
+    return await this.getJson<TraceResult>(`/trace/${encodeURIComponent(traceId)}`);
+  }
+
+  private async getJson<TResponse>(path: string): Promise<TResponse> {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`);
+    return await readJsonResponse<TResponse>(response);
+  }
+
+  private async postJson<TResponse>(
+    path: string,
+    body: unknown
+  ): Promise<TResponse> {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+    return await readJsonResponse<TResponse>(response);
+  }
+}
+
+async function readJsonResponse<TResponse>(response: Response): Promise<TResponse> {
+  if (!response.ok) {
+    const payload = await response
+      .json()
+      .catch(async () => ({ error: await response.text() }));
+    const message =
+      payload &&
+      typeof payload === "object" &&
+      "error" in payload &&
+      typeof payload.error === "string"
+        ? payload.error
+        : `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return (await response.json()) as TResponse;
+}

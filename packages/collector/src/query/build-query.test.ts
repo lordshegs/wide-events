@@ -1,0 +1,40 @@
+import { describe, expect, it } from "vitest";
+import { assertReadOnlySql, compileStructuredQuery } from "./build-query.js";
+
+describe("compileStructuredQuery", () => {
+  it("compiles aggregates, filters, grouping, ordering, and limit", () => {
+    const compiled = compileStructuredQuery({
+      select: [
+        { fn: "COUNT", as: "total" },
+        { fn: "P99", field: "duration_ms", as: "p99_ms" }
+      ],
+      filters: [
+        { field: "main", op: "eq", value: true },
+        { field: "service.name", op: "eq", value: "payments" }
+      ],
+      groupBy: ["http.route"],
+      orderBy: { field: "p99_ms", dir: "desc" },
+      limit: 10
+    });
+
+    expect(compiled.sql).toContain('COUNT(*) AS "total"');
+    expect(compiled.sql).toContain(
+      'PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY "duration_ms") AS "p99_ms"'
+    );
+    expect(compiled.sql).toContain('GROUP BY "http.route"');
+    expect(compiled.sql).toContain('ORDER BY "p99_ms" DESC');
+    expect(compiled.params).toEqual([true, "payments"]);
+  });
+});
+
+describe("assertReadOnlySql", () => {
+  it("rejects mutating sql even when wrapped in whitespace", () => {
+    expect(() => assertReadOnlySql("  INSERT INTO events VALUES (1)")).toThrow(
+      /read-only/
+    );
+  });
+
+  it("allows select statements", () => {
+    expect(() => assertReadOnlySql("SELECT * FROM events")).not.toThrow();
+  });
+});

@@ -1,0 +1,15 @@
+{
+  "name": "wide-events-example-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "run": "tsx src/worker.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@wide-events/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260317.1"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "wide-events-example-node-service",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@wide-events/sdk": "workspace:*",
+    "fastify": "5.8.2"
+  }
+}

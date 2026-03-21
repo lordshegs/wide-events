@@ -1,0 +1,11 @@
+{
+  "name": "wide-events-example-lambda",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "run": "tsx src/handler.ts"
+  },
+  "dependencies": {
+    "@wide-events/sdk": "workspace:*"
+  }
+}
