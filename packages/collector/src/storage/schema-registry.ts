@@ -2,10 +2,9 @@ import {
   BASELINE_COLUMN_NAMES,
   BASELINE_COLUMN_TYPES,
   type ColumnInfo,
-  quoteIdentifier,
-  type QueryRow
+  quoteIdentifier
 } from "@wide-events/internal";
-import { DuckDbDatabase } from "./database.js";
+import type { DuckDbDatabase } from "./database.js";
 
 export class SchemaRegistry {
   private readonly columns = new Map<string, ColumnInfo>();

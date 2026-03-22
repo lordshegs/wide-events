@@ -3,6 +3,17 @@
   "version": "0.1.0",
   "type": "module",
   "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aboluwade-oluwasegun/wide-events.git"
+  },
+  "homepage": "https://github.com/aboluwade-oluwasegun/wide-events#readme",
+  "bugs": {
+    "url": "https://github.com/aboluwade-oluwasegun/wide-events/issues"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

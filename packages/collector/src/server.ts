@@ -1,6 +1,8 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type { CollectorConfig } from "./config.js";
 import { readCollectorConfig } from "./config.js";
+import { resolveCollectorError } from "./errors.js";
+import type { CollectorLogger } from "./logger.js";
 import { registerColumnRoutes } from "./routes/columns.js";
 import { registerHealthRoute } from "./routes/health.js";
 import { registerQueryRoutes } from "./routes/query.js";
@@ -30,10 +32,24 @@ export interface CollectorServer {
 export async function createCollectorServer(
   config: CollectorConfig = readCollectorConfig()
 ): Promise<CollectorServer> {
+  const app = Fastify({
+    logger: true
+  });
+  const logger: CollectorLogger = {
+    info(bindings, message) {
+      app.log.info(bindings, message);
+    },
+    warn(bindings, message) {
+      app.log.warn(bindings, message);
+    },
+    error(bindings, message) {
+      app.log.error(bindings, message);
+    }
+  };
   const database = await DuckDbDatabase.create(config.duckDbPath);
   const schema = new SchemaRegistry(config.maxColumns);
   await schema.hydrate(database);
-  const store = new CollectorStore(database, schema, config);
+  const store = new CollectorStore(database, schema, config, logger);
   const retentionJob = new RetentionJob(store);
   const dependencies: CollectorDependencies = {
     config,
@@ -43,10 +59,6 @@ export async function createCollectorServer(
     retentionJob
   };
 
-  const app = Fastify({
-    logger: true
-  });
-
   registerHealthRoute(app);
   registerTraceRoutes(app, dependencies);
   registerQueryRoutes(app, dependencies);
@@ -54,11 +66,23 @@ export async function createCollectorServer(
   registerColumnRoutes(app, dependencies);
   registerTraceQueryRoutes(app, dependencies);
 
-  app.setErrorHandler((error, _request, reply) => {
-    app.log.error({ err: error }, "collector request failed");
-    const message = error instanceof Error ? error.message : String(error);
-    void reply.code(400).send({
-      error: message
+  app.setErrorHandler((error, request, reply) => {
+    const resolved = resolveCollectorError(error);
+    const bindings = {
+      err: error instanceof Error ? error : new Error(String(error)),
+      method: request.method,
+      statusCode: resolved.statusCode,
+      url: request.url
+    };
+
+    if (resolved.logLevel === "warn") {
+      app.log.warn(bindings, "collector request rejected");
+    } else {
+      app.log.error(bindings, "collector request failed");
+    }
+
+    void reply.code(resolved.statusCode).send({
+      error: resolved.message
     });
   });
 

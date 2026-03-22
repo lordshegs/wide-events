@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { assertRecord, type StructuredQuery } from "@wide-events/internal";
+import { structuredQuerySchema } from "@wide-events/internal";
+import { BadRequestError } from "../errors.js";
 import { compileStructuredQuery } from "../query/build-query.js";
 import type { CollectorDependencies } from "../server.js";
 
@@ -8,13 +9,17 @@ export function registerQueryRoutes(
   dependencies: CollectorDependencies
 ): void {
   app.post("/query", async (request) => {
-    assertRecord(request.body, "Structured query");
-    const query = request.body as unknown as StructuredQuery;
+    const query = structuredQuerySchema.parse(request.body);
     const compiled = compileStructuredQuery(query);
-    const rows = await dependencies.database.executeRead(
-      compiled.sql,
-      compiled.params
-    );
+    let rows;
+    try {
+      rows = await dependencies.database.executeRead(compiled.sql, compiled.params);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new BadRequestError(error.message);
+      }
+      throw error;
+    }
     return { rows };
   });
 }

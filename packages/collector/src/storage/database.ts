@@ -1,8 +1,4 @@
-import {
-  DuckDBConnection,
-  DuckDBInstance,
-  type DuckDBValue
-} from "@duckdb/node-api";
+import { DuckDBInstance, type DuckDBConnection, type DuckDBValue } from "@duckdb/node-api";
 import { BASE_TABLE_SQL, type QueryRow } from "@wide-events/internal";
 
 export class DuckDbDatabase {

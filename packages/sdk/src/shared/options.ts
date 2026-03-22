@@ -18,7 +18,7 @@ const autoInstrumentSchema = z
 export const nodeOptionsSchema = z.object({
   serviceName: z.string().min(1),
   environment: z.string().default("development"),
-  collectorUrl: z.string().url(),
+  collectorUrl: z.url(),
   sampleRate: z.number().int().positive().default(1),
   disabled: z.boolean().default(false),
   autoInstrument: autoInstrumentSchema
@@ -35,7 +35,7 @@ export interface ResolvedWideEventsOptions extends z.output<typeof nodeOptionsSc
 export const edgeOptionsSchema = z.object({
   serviceName: z.string().min(1),
   environment: z.string().default("development"),
-  collectorUrl: z.string().url(),
+  collectorUrl: z.url(),
   sampleRate: z.number().int().positive().default(1),
   disabled: z.boolean().default(false)
 });

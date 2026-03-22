@@ -13,6 +13,7 @@ describe("flattenTraceRequest", () => {
             {
               spans: [
                 {
+                  kind: 1,
                   traceId: "trace-1",
                   spanId: "span-1",
                   startTimeUnixNano: "1000000000",
@@ -37,5 +38,33 @@ describe("flattenTraceRequest", () => {
     expect(rows[0]?.["http.route"]).toBe("/health");
     expect(rows[0]?.["custom.value"]).toBe("42");
     expect(rows[0]?.duration_ms).toBe(1_000);
+  });
+
+  it("only infers main=true for server root spans when the attribute is missing", () => {
+    const rows = flattenTraceRequest({
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  kind: 1,
+                  traceId: "trace-1",
+                  spanId: "server-root"
+                },
+                {
+                  kind: 2,
+                  traceId: "trace-2",
+                  spanId: "client-root"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(rows[0]?.main).toBe(true);
+    expect(rows[1]?.main).toBe(false);
   });
 });

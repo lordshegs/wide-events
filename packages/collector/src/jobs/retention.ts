@@ -7,7 +7,7 @@ export class RetentionJob {
 
   start(): void {
     this.timer = setInterval(() => {
-      void this.store.runRetention();
+      void this.store.runRetention().catch(() => undefined);
     }, 24 * 60 * 60 * 1_000);
   }
 

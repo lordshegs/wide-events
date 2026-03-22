@@ -1,9 +1,15 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-node";
 import { WideEvents } from "./index.js";
+import {
+  getRuntimeRegistrySnapshotForTests,
+  resetNodeRuntimeRegistryForTests
+} from "./runtime-registry.js";
 
 describe("node WideEvents", () => {
   afterEach(async () => {
+    vi.restoreAllMocks();
+    await resetNodeRuntimeRegistryForTests();
   });
 
   it("exports the annotated root span on forceFlush", async () => {
@@ -51,5 +57,124 @@ describe("node WideEvents", () => {
     expect(spans[0]?.attributes["http.route"]).toBe("/checkout");
 
     await wideEvents.shutdown();
+  });
+
+  it("does nothing when annotate is called outside an active request context", async () => {
+    const exporter = new InMemorySpanExporter();
+    const wideEvents = new WideEvents({
+      serviceName: "payments",
+      environment: "test",
+      collectorUrl: "http://collector.test",
+      traceExporter: exporter
+    });
+
+    wideEvents.annotate({
+      "user.id": "user-123"
+    });
+    await wideEvents.forceFlush();
+
+    expect(exporter.getFinishedSpans()).toHaveLength(0);
+    await wideEvents.shutdown();
+  });
+
+  it("skips runtime registration and export when disabled", async () => {
+    const exporter = new InMemorySpanExporter();
+    const wideEvents = new WideEvents({
+      serviceName: "payments",
+      environment: "test",
+      collectorUrl: "http://collector.test",
+      disabled: true,
+      traceExporter: exporter
+    });
+
+    await wideEvents.forceFlush();
+    expect(getRuntimeRegistrySnapshotForTests()).toBeNull();
+    expect(exporter.getFinishedSpans()).toHaveLength(0);
+    await wideEvents.shutdown();
+  });
+
+  it("skips unsampled requests when sampleRate is greater than one", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+    const exporter = new InMemorySpanExporter();
+    const wideEvents = new WideEvents({
+      serviceName: "payments",
+      environment: "test",
+      collectorUrl: "http://collector.test",
+      sampleRate: 10,
+      traceExporter: exporter
+    });
+
+    const middleware = wideEvents.middleware();
+    const response = {
+      statusCode: 200,
+      once() {
+        return this;
+      }
+    };
+
+    middleware(
+      {
+        method: "GET",
+        url: "/checkout",
+        headers: {}
+      },
+      response,
+      () => {
+        wideEvents.annotate({
+          main: true
+        });
+      }
+    );
+
+    await wideEvents.forceFlush();
+    expect(exporter.getFinishedSpans()).toHaveLength(0);
+    await wideEvents.shutdown();
+  });
+
+  it("reuses the active runtime when options are identical", async () => {
+    const exporter = new InMemorySpanExporter();
+    const first = new WideEvents({
+      serviceName: "payments",
+      environment: "test",
+      collectorUrl: "http://collector.test",
+      traceExporter: exporter
+    });
+
+    expect(getRuntimeRegistrySnapshotForTests()?.references).toBe(1);
+
+    const second = new WideEvents({
+      serviceName: "payments",
+      environment: "test",
+      collectorUrl: "http://collector.test",
+      traceExporter: exporter
+    });
+
+    expect(getRuntimeRegistrySnapshotForTests()?.references).toBe(2);
+
+    await second.shutdown();
+    expect(getRuntimeRegistrySnapshotForTests()?.references).toBe(1);
+
+    await first.shutdown();
+    expect(getRuntimeRegistrySnapshotForTests()).toBeNull();
+  });
+
+  it("throws when a second runtime is created with different options", async () => {
+    const first = new WideEvents({
+      serviceName: "payments",
+      environment: "test",
+      collectorUrl: "http://collector.test",
+      traceExporter: new InMemorySpanExporter()
+    });
+
+    expect(() => {
+      return new WideEvents({
+        serviceName: "checkout",
+        environment: "test",
+        collectorUrl: "http://collector.test",
+        traceExporter: new InMemorySpanExporter()
+      });
+    }).toThrow(/active Node runtime/);
+
+    await first.shutdown();
   });
 });

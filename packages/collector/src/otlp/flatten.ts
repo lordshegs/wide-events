@@ -55,7 +55,7 @@ export function flattenSpan(
     main:
       typeof merged["main"] === "boolean"
         ? merged["main"]
-        : !(span.parentSpanId && span.parentSpanId.length > 0),
+        : span.kind === 1 && !(span.parentSpanId && span.parentSpanId.length > 0),
     sample_rate: normalizeInteger(merged["sample_rate"], 1),
     "service.name": expectNullableString(merged["service.name"]),
     "service.environment": expectNullableString(merged["service.environment"]),
@@ -118,6 +118,10 @@ function normalizeAnyValue(value: OtlpAnyValue | undefined): EventPrimitive {
 
   if (typeof value.intValue === "string") {
     return Number.parseInt(value.intValue, 10);
+  }
+
+  if (typeof value.intValue === "number") {
+    return Math.trunc(value.intValue);
   }
 
   if (value.arrayValue?.values) {

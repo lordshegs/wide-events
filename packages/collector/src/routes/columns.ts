@@ -5,7 +5,7 @@ export function registerColumnRoutes(
   app: FastifyInstance,
   dependencies: CollectorDependencies
 ): void {
-  app.get("/columns", async () => ({
+  app.get("/columns", () => ({
     columns: dependencies.schema.listColumns()
   }));
 }

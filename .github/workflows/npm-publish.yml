@@ -31,7 +31,7 @@ jobs:
       - name: pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10.29.3
+          version: 10.32.1
 
       - name: Node.js
         uses: actions/setup-node@v4
@@ -43,11 +43,8 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Test
-        run: pnpm test
-
-      - name: Typecheck
-        run: pnpm typecheck
+      - name: Validate
+        run: pnpm run ci
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets

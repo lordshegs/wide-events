@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/server.ts"
+    "dev": "tsx src/server.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@wide-events/sdk": "workspace:*",
-    "fastify": "5.8.2"
+    "@wide-events/sdk": "workspace:*"
   }
 }

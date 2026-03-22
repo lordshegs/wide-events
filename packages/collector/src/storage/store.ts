@@ -6,8 +6,10 @@ import {
   type FlatEventRow
 } from "@wide-events/internal";
 import type { CollectorConfig } from "../config.js";
-import { DuckDbDatabase } from "./database.js";
-import { SchemaRegistry } from "./schema-registry.js";
+import { QueueLimitExceededError } from "../errors.js";
+import { noopCollectorLogger, type CollectorLogger } from "../logger.js";
+import type { DuckDbDatabase } from "./database.js";
+import type { SchemaRegistry } from "./schema-registry.js";
 import { SerializedExecutor } from "./serialized-executor.js";
 
 interface PendingBatch {
@@ -25,7 +27,8 @@ export class CollectorStore {
   constructor(
     private readonly database: DuckDbDatabase,
     private readonly schema: SchemaRegistry,
-    private readonly config: CollectorConfig
+    private readonly config: CollectorConfig,
+    private readonly logger: CollectorLogger = noopCollectorLogger
   ) {}
 
   async enqueueRows(rows: readonly FlatEventRow[]): Promise<void> {
@@ -34,7 +37,21 @@ export class CollectorStore {
     }
 
     if (this.pendingRowCount + rows.length > this.config.queueLimit) {
-      throw new Error("Collector queue limit exceeded");
+      this.logger.warn(
+        {
+          attemptedRows: rows.length,
+          batchSize: this.config.batchSize,
+          pendingRowCount: this.pendingRowCount,
+          queueLimit: this.config.queueLimit
+        },
+        "collector queue saturated"
+      );
+      throw new QueueLimitExceededError(
+        this.config.queueLimit,
+        this.pendingRowCount,
+        rows.length,
+        this.config.batchSize
+      );
     }
 
     return await new Promise<void>((resolve, reject) => {
@@ -71,10 +88,38 @@ export class CollectorStore {
       now.getTime() - this.config.retentionDays * 24 * 60 * 60 * 1_000
     ).toISOString();
 
-    await this.executor.enqueue(async () => {
-      await this.database.execute("DELETE FROM events WHERE ts < ?", [cutoff]);
-      await this.database.execute("CHECKPOINT");
-    });
+    this.logger.info(
+      {
+        cutoff,
+        retentionDays: this.config.retentionDays
+      },
+      "collector retention started"
+    );
+
+    try {
+      await this.executor.enqueue(async () => {
+        await this.database.execute("DELETE FROM events WHERE ts < ?", [cutoff]);
+        await this.database.execute("CHECKPOINT");
+      });
+
+      this.logger.info(
+        {
+          cutoff,
+          retentionDays: this.config.retentionDays
+        },
+        "collector retention completed"
+      );
+    } catch (error) {
+      this.logger.error(
+        {
+          cutoff,
+          retentionDays: this.config.retentionDays,
+          err: error instanceof Error ? error : new Error(String(error))
+        },
+        "collector retention failed"
+      );
+      throw error;
+    }
   }
 
   private async flushSoon(): Promise<void> {
@@ -93,11 +138,22 @@ export class CollectorStore {
 
     try {
       await this.executor.enqueue(async () => {
-        await this.schema.ensureDynamicColumns(
+        const droppedColumns = await this.schema.ensureDynamicColumns(
           this.database,
           collectDynamicColumns(rows)
         );
-        await insertRows(this.database, rows);
+        if (droppedColumns.length > 0) {
+          this.logger.warn(
+            {
+              droppedColumns,
+              droppedCount: droppedColumns.length,
+              maxColumns: this.config.maxColumns
+            },
+            "collector dropped dynamic columns after reaching schema cap"
+          );
+        }
+
+        await insertRows(this.database, this.schema, rows);
       });
 
       for (const entry of batch) {
@@ -129,13 +185,14 @@ function collectDynamicColumns(rows: readonly FlatEventRow[]): string[] {
 
 async function insertRows(
   database: DuckDbDatabase,
+  schema: SchemaRegistry,
   rows: readonly FlatEventRow[]
 ): Promise<void> {
   if (rows.length === 0) {
     return;
   }
 
-  const columnNames = collectInsertColumns(rows);
+  const columnNames = collectInsertColumns(schema, rows);
   const placeholders = rows
     .map(() => `(${columnNames.map(() => "?").join(", ")})`)
     .join(", ");
@@ -153,11 +210,16 @@ async function insertRows(
   await database.execute(sql, values);
 }
 
-function collectInsertColumns(rows: readonly FlatEventRow[]): string[] {
+function collectInsertColumns(
+  schema: SchemaRegistry,
+  rows: readonly FlatEventRow[]
+): string[] {
   const columnSet = new Set<string>(BASELINE_COLUMN_NAMES);
   for (const row of rows) {
     for (const key of Object.keys(row)) {
-      columnSet.add(key);
+      if (schema.isKnownColumn(key)) {
+        columnSet.add(key);
+      }
     }
   }
 

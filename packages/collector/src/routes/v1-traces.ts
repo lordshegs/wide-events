@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { assertRecord } from "@wide-events/internal";
 import { flattenTraceRequest } from "../otlp/flatten.js";
+import { otlpExportTraceServiceRequestSchema } from "../otlp/types.js";
 import type { CollectorDependencies } from "../server.js";
 
 export function registerTraceRoutes(
@@ -8,8 +8,8 @@ export function registerTraceRoutes(
   dependencies: CollectorDependencies
 ): void {
   app.post("/v1/traces", async (request, reply) => {
-    assertRecord(request.body, "OTLP request body");
-    const rows = flattenTraceRequest(request.body);
+    const body = otlpExportTraceServiceRequestSchema.parse(request.body);
+    const rows = flattenTraceRequest(body);
     await dependencies.store.enqueueRows(rows);
     await reply.code(202).send({ accepted: rows.length });
   });

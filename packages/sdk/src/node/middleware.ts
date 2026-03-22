@@ -4,8 +4,8 @@ import { MAIN_SPAN_KEY, type NodeWideEventsRuntime } from "./runtime.js";
 import { isSpanLike, setSpanAttributes } from "./span.js";
 
 export interface MiddlewareRequest {
-  method?: string;
-  url?: string;
+  method?: string | undefined;
+  url?: string | undefined;
   headers: Record<string, string | string[] | undefined>;
 }
 
@@ -41,8 +41,14 @@ export function createMiddleware(runtime: NodeWideEventsRuntime) {
     );
 
     const spanContext = trace.setSpan(parentContext, span).setValue(MAIN_SPAN_KEY, span);
+    let finalized = false;
 
     const finalize = () => {
+      if (finalized) {
+        return;
+      }
+
+      finalized = true;
       span.setAttribute("http.status_code", response.statusCode ?? 200);
       span.setAttribute(
         "error",

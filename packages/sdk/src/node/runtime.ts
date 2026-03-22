@@ -55,7 +55,8 @@ export class NodeWideEventsRuntime {
         : [
             getNodeAutoInstrumentations({
               "@opentelemetry/instrumentation-http": {
-                enabled: this.options.autoInstrument.http
+                enabled: this.options.autoInstrument.http,
+                disableIncomingRequestInstrumentation: true
               },
               "@opentelemetry/instrumentation-undici": {
                 enabled: this.options.autoInstrument.fetch

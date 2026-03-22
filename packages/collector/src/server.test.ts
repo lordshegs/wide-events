@@ -85,12 +85,25 @@ describe("collector server", () => {
         url: "/query",
         payload: {
           select: [{ fn: "COUNT", as: "total" }],
-          filters: [{ field: "trace_id", op: "eq", value: "trace-1" }]
+          filters: [{ field: "trace_id", op: "eq", value: "trace-1" }],
+          scope: "all"
         }
       });
 
       expect(queryResponse.statusCode).toBe(200);
       expect(queryResponse.json().rows[0]?.total).toBe(2);
+
+      const mainOnlyResponse = await server.app.inject({
+        method: "POST",
+        url: "/query",
+        payload: {
+          select: [{ fn: "COUNT", as: "total" }],
+          filters: [{ field: "trace_id", op: "eq", value: "trace-1" }]
+        }
+      });
+
+      expect(mainOnlyResponse.statusCode).toBe(200);
+      expect(mainOnlyResponse.json().rows[0]?.total).toBe(1);
 
       const traceResponse = await server.app.inject({
         method: "GET",
@@ -111,6 +124,57 @@ describe("collector server", () => {
           .json()
           .columns.some((column: { name: string }) => column.name === "db.statement")
       ).toBe(true);
+
+      const conflictingScopeResponse = await server.app.inject({
+        method: "POST",
+        url: "/query",
+        payload: {
+          select: [{ fn: "COUNT", as: "total" }],
+          filters: [{ field: "main", op: "eq", value: true }]
+        }
+      });
+
+      expect(conflictingScopeResponse.statusCode).toBe(400);
+      expect(conflictingScopeResponse.json().error).toMatch(/scope "main"/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns 400 for malformed OTLP payloads", async () => {
+    const server = await createCollectorServer({
+      duckDbPath: join(workspaceDir, "events.duckdb"),
+      port: 4318,
+      batchSize: 10,
+      batchTimeoutMs: 10,
+      retentionDays: 30,
+      maxColumns: 200,
+      queueLimit: 1_000
+    });
+
+    try {
+      const response = await server.app.inject({
+        method: "POST",
+        url: "/v1/traces",
+        payload: {
+          resourceSpans: [
+            {
+              scopeSpans: [
+                {
+                  spans: [
+                    {
+                      spanId: "span-1"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error).toMatch(/traceId/);
     } finally {
       await server.close();
     }
@@ -138,6 +202,93 @@ describe("collector server", () => {
 
       expect(response.statusCode).toBe(400);
       expect(response.json().error).toMatch(/read-only/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns 503 when the ingest queue is saturated", async () => {
+    const server = await createCollectorServer({
+      duckDbPath: join(workspaceDir, "events.duckdb"),
+      port: 4318,
+      batchSize: 10,
+      batchTimeoutMs: 5_000,
+      retentionDays: 30,
+      maxColumns: 200,
+      queueLimit: 1
+    });
+
+    try {
+      const firstRequest = server.app.inject({
+        method: "POST",
+        url: "/v1/traces",
+        payload: {
+          resourceSpans: [
+            {
+              resource: {
+                attributes: [
+                  {
+                    key: "service.name",
+                    value: { stringValue: "payments" }
+                  }
+                ]
+              },
+              scopeSpans: [
+                {
+                  spans: [
+                    {
+                      traceId: "trace-1",
+                      spanId: "span-1",
+                      startTimeUnixNano: "1000000000",
+                      endTimeUnixNano: "2000000000"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      const secondResponse = await server.app.inject({
+        method: "POST",
+        url: "/v1/traces",
+        payload: {
+          resourceSpans: [
+            {
+              resource: {
+                attributes: [
+                  {
+                    key: "service.name",
+                    value: { stringValue: "payments" }
+                  }
+                ]
+              },
+              scopeSpans: [
+                {
+                  spans: [
+                    {
+                      traceId: "trace-2",
+                      spanId: "span-2",
+                      startTimeUnixNano: "1000000000",
+                      endTimeUnixNano: "2000000000"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      });
+
+      expect(secondResponse.statusCode).toBe(503);
+      expect(secondResponse.json().error).toMatch(/queue limit exceeded/i);
+
+      await server.dependencies.store.flush();
+      const firstResponse = await firstRequest;
+      expect(firstResponse.statusCode).toBe(202);
     } finally {
       await server.close();
     }

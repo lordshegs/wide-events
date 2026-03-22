@@ -35,8 +35,8 @@ export type QueryAggregateFunction =
 
 export interface QuerySelectItem {
   fn: QueryAggregateFunction;
-  field?: string;
-  as?: string;
+  field?: string | undefined;
+  as?: string | undefined;
 }
 
 export type QueryFilterOperator =
@@ -63,13 +63,16 @@ export interface QueryOrderBy {
   dir: "asc" | "desc";
 }
 
+export type QueryScope = "main" | "all";
+
 export interface StructuredQuery {
   select: readonly QuerySelectItem[];
-  filters?: readonly QueryFilter[];
-  groupBy?: readonly string[];
-  timeRange?: QueryTimeRange;
-  orderBy?: QueryOrderBy;
-  limit?: number;
+  filters?: readonly QueryFilter[] | undefined;
+  groupBy?: readonly string[] | undefined;
+  timeRange?: QueryTimeRange | undefined;
+  orderBy?: QueryOrderBy | undefined;
+  limit?: number | undefined;
+  scope?: QueryScope | undefined;
 }
 
 export type QueryRow = Record<string, EventPrimitive>;

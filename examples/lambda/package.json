@@ -3,9 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "run": "tsx src/handler.ts"
+    "run": "tsx src/handler.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@wide-events/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.161"
   }
 }

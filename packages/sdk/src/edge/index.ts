@@ -10,6 +10,8 @@ import { formatTraceparent, parseTraceparent } from "../shared/traceparent.js";
 
 export class WideEvents {
   readonly options: ResolvedEdgeWideEventsOptions;
+  private flushed = false;
+  private readonly shouldExport: boolean;
   private readonly spanId: string;
   private traceId: string;
   private readonly startedAt = Date.now();
@@ -18,6 +20,9 @@ export class WideEvents {
 
   constructor(options: EdgeWideEventsOptions) {
     this.options = edgeOptionsSchema.parse(options);
+    this.shouldExport =
+      !this.options.disabled &&
+      (this.options.sampleRate <= 1 || Math.random() < 1 / this.options.sampleRate);
     this.spanId = createSpanId();
     this.traceId = createTraceId();
     this.attributes.set("sample_rate", this.options.sampleRate);
@@ -50,11 +55,8 @@ export class WideEvents {
   }
 
   async flush(fetchImpl: typeof fetch = fetch): Promise<void> {
-    if (this.options.disabled) {
-      return;
-    }
-
-    if (this.options.sampleRate > 1 && Math.random() >= 1 / this.options.sampleRate) {
+    if (this.options.disabled || this.flushed || !this.shouldExport) {
+      this.flushed = true;
       return;
     }
 
@@ -93,6 +95,7 @@ export class WideEvents {
       `${this.options.collectorUrl.replace(/\/$/u, "")}/v1/traces`,
       body
     );
+    this.flushed = true;
   }
 }
 
