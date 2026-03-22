@@ -1,8 +1,8 @@
 ---
-"@wide-events/client": minor
-"@wide-events/collector": minor
-"@wide-events/internal": minor
-"@wide-events/sdk": minor
+"@wide-events/client": patch
+"@wide-events/collector": patch
+"@wide-events/internal": patch
+"@wide-events/sdk": patch
 ---
 
 General optimizations/cleanup
