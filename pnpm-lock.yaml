@@ -41,15 +41,16 @@ importers:
       '@wide-events/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+    devDependencies:
+      '@types/aws-lambda':
+        specifier: ^8.10.161
+        version: 8.10.161
 
   examples/node-service:
     dependencies:
       '@wide-events/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
-      fastify:
-        specifier: 5.8.2
-        version: 5.8.2
 
   examples/worker:
     dependencies:
@@ -82,7 +83,11 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
 
-  packages/internal: {}
+  packages/internal:
+    dependencies:
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
 
   packages/sdk:
     dependencies:
