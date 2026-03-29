@@ -6,6 +6,6 @@ export function registerColumnRoutes(
   dependencies: CollectorDependencies
 ): void {
   app.get("/columns", () => ({
-    columns: dependencies.schema.listColumns()
+    columns: dependencies.catalog.listColumns(dependencies.schema)
   }));
 }

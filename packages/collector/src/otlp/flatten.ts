@@ -1,7 +1,6 @@
 import {
-  normalizeEventPrimitive,
   type DynamicEventAttributes,
-  type EventPrimitive,
+  type EventValue,
   type FlatEventRow
 } from "@wide-events/internal";
 import type {
@@ -71,7 +70,8 @@ export function flattenSpan(
     ),
     "user.id": expectNullableString(merged["user.id"]),
     "user.type": expectNullableString(merged["user.type"]),
-    "user.org.id": expectNullableString(merged["user.org.id"])
+    "user.org.id": expectNullableString(merged["user.org.id"]),
+    attributes_overflow: {}
   };
 
   for (const [key, value] of Object.entries(merged)) {
@@ -79,7 +79,7 @@ export function flattenSpan(
       continue;
     }
 
-    row[key] = typeof value === "string" ? value : JSON.stringify(value);
+    row.attributes_overflow[key] = value;
   }
 
   return row;
@@ -99,7 +99,7 @@ function extractAttributes(attributes: readonly OtlpKeyValue[]): DynamicEventAtt
   return result;
 }
 
-function normalizeAnyValue(value: OtlpAnyValue | undefined): EventPrimitive {
+function normalizeAnyValue(value: OtlpAnyValue | undefined): EventValue {
   if (!value) {
     return null;
   }
@@ -125,11 +125,11 @@ function normalizeAnyValue(value: OtlpAnyValue | undefined): EventPrimitive {
   }
 
   if (value.arrayValue?.values) {
-    return normalizeEventPrimitive(value.arrayValue.values.map(normalizeAnyValue));
+    return value.arrayValue.values.map(normalizeAnyValue);
   }
 
   if (value.kvlistValue?.values) {
-    const nested: Record<string, EventPrimitive> = {};
+    const nested: Record<string, EventValue> = {};
     for (const entry of value.kvlistValue.values) {
       if (!entry.key) {
         continue;
@@ -137,7 +137,7 @@ function normalizeAnyValue(value: OtlpAnyValue | undefined): EventPrimitive {
 
       nested[entry.key] = normalizeAnyValue(entry.value);
     }
-    return normalizeEventPrimitive(nested);
+    return nested;
   }
 
   return null;
@@ -159,20 +159,20 @@ function requireString(value: string | undefined, label: string): string {
   return value;
 }
 
-function expectNullableString(value: EventPrimitive | undefined): string | null {
+function expectNullableString(value: EventValue | undefined): string | null {
   if (typeof value === "undefined" || value === null) {
     return null;
   }
 
-  return typeof value === "string" ? value : String(value);
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-function normalizeInteger(value: EventPrimitive | undefined, fallback: number): number {
+function normalizeInteger(value: EventValue | undefined, fallback: number): number {
   const normalized = normalizeNullableInteger(value);
   return normalized ?? fallback;
 }
 
-function normalizeNullableInteger(value: EventPrimitive | undefined): number | null {
+function normalizeNullableInteger(value: EventValue | undefined): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.trunc(value);
   }
@@ -185,7 +185,7 @@ function normalizeNullableInteger(value: EventPrimitive | undefined): number | n
   return null;
 }
 
-function normalizeNullableBoolean(value: EventPrimitive | undefined): boolean | null {
+function normalizeNullableBoolean(value: EventValue | undefined): boolean | null {
   if (typeof value === "boolean") {
     return value;
   }

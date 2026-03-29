@@ -25,7 +25,11 @@ The collector listens on `http://localhost:4318` by default.
 | `WIDE_EVENTS_BATCH_SIZE` | no | `100` | Max rows per write batch. |
 | `WIDE_EVENTS_BATCH_TIMEOUT_MS` | no | `1000` | Flush interval for partial batches. |
 | `WIDE_EVENTS_RETENTION_DAYS` | no | `30` | Retention cutoff in days. |
-| `WIDE_EVENTS_MAX_COLUMNS` | no | `200` | Maximum number of table columns, including dynamic columns. |
+| `WIDE_EVENTS_MAX_PROMOTED_COLUMNS` | no | `200` | Maximum number of promoted dynamic columns. |
+| `WIDE_EVENTS_PROMOTION_INTERVAL_MS` | no | `300000` | How often the promotion scheduler evaluates candidates. |
+| `WIDE_EVENTS_PROMOTION_MIN_ROWS` | no | `1000` | Minimum non-null rows before a key can be promoted. |
+| `WIDE_EVENTS_PROMOTION_MIN_RATIO` | no | `0.01` | Minimum retained-row ratio before a key can be promoted. |
+| `WIDE_EVENTS_PROMOTION_MAX_KEYS_PER_RUN` | no | `1` | Maximum keys promoted in one scheduler cycle. |
 | `WIDE_EVENTS_QUEUE_LIMIT` | no | `10000` | Maximum number of queued rows before ingest is rejected. |
 
 ## HTTP API
@@ -76,7 +80,7 @@ Example:
 }
 ```
 
-`scope` defaults to `"main"`. In that mode the collector injects `main = true`. Set `scope: "all"` to query all stored spans. If you explicitly filter on `main` while also using `scope: "main"`, the request is rejected with `400`.
+`scope` defaults to `"main"`. In that mode the collector injects `main = true`. Set `scope: "all"` to query all stored spans. Structured queries only target baseline and promoted columns; overflow-only keys should be queried through `/sql`. If you explicitly filter on `main` while also using `scope: "main"`, the request is rejected with `400`.
 
 ### `POST /sql`
 
@@ -102,7 +106,7 @@ Returns schema metadata:
 }
 ```
 
-`origin` is either `baseline` or `dynamic`.
+Columns now include storage and promotion metadata such as `storageState`, `queryable`, `inferredType`, `promotedType`, `seenRows`, and `lastSeenAt`.
 
 ### `GET /trace/:id`
 
@@ -119,8 +123,9 @@ Returns all stored rows for a trace in timestamp order:
 
 - All spans are stored, not only `main=true` rows.
 - Structured queries default to `main=true` semantics unless `scope: "all"` is requested.
-- New attributes create new DuckDB columns until `WIDE_EVENTS_MAX_COLUMNS` is reached.
-- Once the column cap is reached, additional dynamic fields are dropped and logged.
+- New attributes land in `attributes_overflow MAP(VARCHAR, JSON)` first.
+- Stable scalar keys can later be promoted into typed DuckDB columns by the background scheduler.
+- Promoted keys are backfilled into their typed column and future ingest becomes column-only for that key.
 - Retention deletes old rows on a daily schedule and runs through the same serialized write path as inserts and schema changes.
 
 ## Logging
@@ -128,7 +133,7 @@ Returns all stored rows for a trace in timestamp order:
 The collector emits warnings and info around the operational edges that matter:
 
 - queue saturation
-- dynamic column drops at the schema cap
+- promotion failures
 - retention start, finish, and failure
 
 ## Docker
@@ -140,6 +145,7 @@ docker build -f packages/collector/Dockerfile -t wide-events-collector:local .
 ```
 
 The release workflow publishes to `docker.io/$DOCKERHUB_USERNAME/wide-events-collector`.
+
 
 ## Security posture
 

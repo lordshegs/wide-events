@@ -36,7 +36,7 @@ describe("flattenTraceRequest", () => {
     expect(rows[0]?.main).toBe(true);
     expect(rows[0]?.["service.name"]).toBe("api");
     expect(rows[0]?.["http.route"]).toBe("/health");
-    expect(rows[0]?.["custom.value"]).toBe("42");
+    expect(rows[0]?.attributes_overflow["custom.value"]).toBe(42);
     expect(rows[0]?.duration_ms).toBe(1_000);
   });
 

@@ -1,5 +1,5 @@
 import { BASELINE_COLUMN_NAMES } from "./schema.js";
-import type { EventPrimitive } from "./types.js";
+import type { EventValue } from "./types.js";
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9._-]+$/u;
 const DURATION_PATTERN = /^(\d+)(ms|s|m|h|d)$/u;
@@ -55,7 +55,7 @@ export function parseDurationWindow(value: string): number {
   }
 }
 
-export function normalizeEventPrimitive(value: unknown): EventPrimitive {
+export function normalizeEventPrimitive(value: unknown): EventValue {
   if (
     value === null ||
     typeof value === "string" ||
@@ -75,6 +75,18 @@ export function normalizeEventPrimitive(value: unknown): EventPrimitive {
 
   if (typeof value === "undefined") {
     return null;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeEventPrimitive(entry));
+  }
+
+  if (typeof value === "object") {
+    const normalized: Record<string, EventValue> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      normalized[key] = normalizeEventPrimitive(entry);
+    }
+    return normalized;
   }
 
   return JSON.stringify(value);

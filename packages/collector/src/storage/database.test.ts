@@ -20,12 +20,12 @@ describe("DuckDbDatabase", () => {
 
   it("normalizes bigint, timestamp, and complex DuckDB values", async () => {
     const rows = await database.executeRead(
-      "SELECT 42::BIGINT AS safe_bigint, 9007199254740993::BIGINT AS unsafe_bigint, TIMESTAMPTZ '2024-01-01T00:00:00Z' AS ts, [1, 2, 3] AS payload"
+      "SELECT 42::BIGINT AS safe_bigint, 9007199254740993::BIGINT AS unsafe_bigint, TIMESTAMPTZ '2024-01-01T00:00:00Z' AS ts, [1, 2, 3] AS payload",
     );
 
-    expect(rows[0]?.safe_bigint).toBe(42);
-    expect(rows[0]?.unsafe_bigint).toBe("9007199254740993");
-    expect(rows[0]?.ts).toBe("2024-01-01T00:00:00.000Z");
-    expect(rows[0]?.payload).toBe("[1,2,3]");
+    expect(rows[0]?.["safe_bigint"]).toBe(42);
+    expect(rows[0]?.["unsafe_bigint"]).toBe("9007199254740993");
+    expect(rows[0]?.["ts"]).toBe("2024-01-01T00:00:00.000Z");
+    expect(rows[0]?.["payload"]).toEqual([1, 2, 3]);
   });
 });

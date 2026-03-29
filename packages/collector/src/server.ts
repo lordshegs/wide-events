@@ -9,7 +9,9 @@ import { registerQueryRoutes } from "./routes/query.js";
 import { registerSqlRoutes } from "./routes/sql.js";
 import { registerTraceQueryRoutes } from "./routes/trace.js";
 import { registerTraceRoutes } from "./routes/v1-traces.js";
+import { PromotionJob } from "./jobs/promotion.js";
 import { DuckDbDatabase } from "./storage/database.js";
+import { AttributeCatalog } from "./storage/attribute-catalog.js";
 import { SchemaRegistry } from "./storage/schema-registry.js";
 import { CollectorStore } from "./storage/store.js";
 import { RetentionJob } from "./jobs/retention.js";
@@ -18,8 +20,10 @@ export interface CollectorDependencies {
   config: CollectorConfig;
   database: DuckDbDatabase;
   schema: SchemaRegistry;
+  catalog: AttributeCatalog;
   store: CollectorStore;
   retentionJob: RetentionJob;
+  promotionJob: PromotionJob;
 }
 
 export interface CollectorServer {
@@ -47,16 +51,21 @@ export async function createCollectorServer(
     }
   };
   const database = await DuckDbDatabase.create(config.duckDbPath);
-  const schema = new SchemaRegistry(config.maxColumns);
+  const schema = new SchemaRegistry(config.maxPromotedColumns);
   await schema.hydrate(database);
-  const store = new CollectorStore(database, schema, config, logger);
+  const catalog = new AttributeCatalog();
+  await catalog.hydrate(database);
+  const store = new CollectorStore(database, schema, catalog, config, logger);
   const retentionJob = new RetentionJob(store);
+  const promotionJob = new PromotionJob(store, config);
   const dependencies: CollectorDependencies = {
     config,
     database,
     schema,
+    catalog,
     store,
-    retentionJob
+    retentionJob,
+    promotionJob
   };
 
   registerHealthRoute(app);
@@ -91,6 +100,7 @@ export async function createCollectorServer(
     dependencies,
     async start() {
       retentionJob.start();
+      promotionJob.start();
       await app.listen({
         port: config.port,
         host: "0.0.0.0"
@@ -98,6 +108,7 @@ export async function createCollectorServer(
     },
     async close() {
       retentionJob.stop();
+      await promotionJob.stop();
       await store.flush();
       await app.close();
       database.close();

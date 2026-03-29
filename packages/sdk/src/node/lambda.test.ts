@@ -3,7 +3,7 @@ import type {
   APIGatewayProxyEventV2WithRequestContext,
   APIGatewayProxyResultV2,
   APIGatewayEventRequestContextV2,
-  Context
+  Context,
 } from "aws-lambda";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-node";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -22,23 +22,23 @@ describe("wrapLambdaHandler", () => {
       serviceName: "lambda-service",
       environment: "test",
       collectorUrl: "http://collector.test",
-      traceExporter: exporter
+      traceExporter: exporter,
     });
 
     const handler = wideEvents.wrapHandler<
       APIGatewayProxyEventV2,
       Context,
-      APIGatewayProxyResultV2
+      Exclude<APIGatewayProxyResultV2, string>
     >(async (event) => {
       wideEvents.annotate({
         main: true,
         "http.request.method": event.requestContext.http.method,
-        "http.route": event.rawPath
+        "http.route": event.rawPath,
       });
 
       return {
         statusCode: 200,
-        body: JSON.stringify({ ok: true })
+        body: JSON.stringify({ ok: true }),
       };
     });
 
@@ -60,22 +60,24 @@ describe("wrapLambdaHandler", () => {
       serviceName: "lambda-service",
       environment: "test",
       collectorUrl: "http://collector.test",
-      traceExporter: exporter
+      traceExporter: exporter,
     });
 
     const handler = wideEvents.wrapHandler<
       APIGatewayProxyEventV2,
       Context,
-      APIGatewayProxyResultV2
+      Exclude<APIGatewayProxyResultV2, string>
     >(async () => {
       wideEvents.annotate({
         main: true,
-        "http.route": "/boom"
+        "http.route": "/boom",
       });
       throw new Error("boom");
     });
 
-    await expect(handler(createEvent(), createContext())).rejects.toThrow("boom");
+    await expect(handler(createEvent(), createContext())).rejects.toThrow(
+      "boom",
+    );
 
     const span = exporter.getFinishedSpans()[0];
     expect(span?.attributes["error"]).toBe(true);
@@ -90,27 +92,28 @@ describe("wrapLambdaHandler", () => {
       serviceName: "lambda-service",
       environment: "test",
       collectorUrl: "http://collector.test",
-      traceExporter: exporter
+      traceExporter: exporter,
     });
 
     const handler = wideEvents.wrapHandler<
       APIGatewayProxyEventV2,
       Context,
-      APIGatewayProxyResultV2
+      Exclude<APIGatewayProxyResultV2, string>
     >(async () => ({
-      statusCode: 204
+      statusCode: 204,
     }));
 
     await handler(
       createEvent({
-        traceparent:
-          "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+        traceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",
       }),
-      createContext()
+      createContext(),
     );
 
     const span = exporter.getFinishedSpans()[0];
-    expect(span?.spanContext().traceId).toBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    expect(span?.spanContext().traceId).toBe(
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
     expect(span?.parentSpanContext?.spanId).toBe("bbbbbbbbbbbbbbbb");
 
     await wideEvents.shutdown();
@@ -118,7 +121,7 @@ describe("wrapLambdaHandler", () => {
 });
 
 function createEvent(
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
 ): APIGatewayProxyEventV2WithRequestContext<APIGatewayEventRequestContextV2> {
   return {
     version: "2.0",
@@ -136,16 +139,15 @@ function createEvent(
         path: "/lambda",
         protocol: "HTTP/1.1",
         sourceIp: "127.0.0.1",
-        userAgent: "vitest"
+        userAgent: "vitest",
       },
       requestId: "request-id",
       routeKey: "$default",
       stage: "$default",
       time: "01/Jan/2024:00:00:00 +0000",
       timeEpoch: 1,
-      authentication: undefined
     },
-    isBase64Encoded: false
+    isBase64Encoded: false,
   };
 }
 
@@ -165,6 +167,6 @@ function createContext(): Context {
     },
     done() {},
     fail() {},
-    succeed() {}
+    succeed() {},
   };
 }

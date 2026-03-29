@@ -5,7 +5,7 @@ describe("SerializedExecutor", () => {
   it("runs queued tasks sequentially", async () => {
     const executor = new SerializedExecutor();
     const executionOrder: string[] = [];
-    let releaseFirstTask = () => undefined;
+    let releaseFirstTask: (() => void) | undefined;
     const firstTaskGate = new Promise<void>((resolve) => {
       releaseFirstTask = resolve;
     });
@@ -24,7 +24,7 @@ describe("SerializedExecutor", () => {
 
     await Promise.resolve();
     expect(executionOrder).toEqual(["first:start"]);
-    releaseFirstTask();
+    releaseFirstTask?.();
 
     await expect(firstTask).resolves.toBe("first");
     await expect(secondTask).resolves.toBe("second");

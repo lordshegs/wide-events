@@ -1,11 +1,12 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { BASELINE_COLUMN_NAMES, type FlatEventRow } from "@wide-events/internal";
+import type { DynamicEventAttributes, FlatEventRow } from "@wide-events/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CollectorConfig } from "../config.js";
 import { QueueLimitExceededError } from "../errors.js";
 import type { CollectorLogger } from "../logger.js";
+import { AttributeCatalog } from "./attribute-catalog.js";
 import { DuckDbDatabase } from "./database.js";
 import { SchemaRegistry } from "./schema-registry.js";
 import { CollectorStore } from "./store.js";
@@ -17,8 +18,8 @@ interface LoggedEvent {
 
 function createRow(
   suffix: string,
-  attributes: Record<string, string> = {},
-  ts: string = "2024-01-01T00:00:00.000Z"
+  attributes: DynamicEventAttributes = {},
+  ts: string = "2024-01-01T00:00:00.000Z",
 ): FlatEventRow {
   return {
     trace_id: `trace-${suffix}`,
@@ -39,7 +40,7 @@ function createRow(
     "user.id": null,
     "user.type": null,
     "user.org.id": null,
-    ...attributes
+    attributes_overflow: attributes,
   };
 }
 
@@ -66,8 +67,8 @@ function createLogger(): {
       },
       error(bindings, message) {
         errors.push({ bindings, message });
-      }
-    }
+      },
+    },
   };
 }
 
@@ -88,10 +89,17 @@ describe("CollectorStore", () => {
   it("flushes when the batch size is reached", async () => {
     const schema = new SchemaRegistry(200);
     await schema.hydrate(database);
-    const store = new CollectorStore(database, schema, configOverrides({
-      batchSize: 2,
-      batchTimeoutMs: 5_000
-    }));
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
+    const store = new CollectorStore(
+      database,
+      schema,
+      catalog,
+      configOverrides({
+        batchSize: 2,
+        batchTimeoutMs: 5_000,
+      }),
+    );
 
     let firstResolved = false;
     const firstBatch = store.enqueueRows([createRow("one")]).then(() => {
@@ -103,159 +111,191 @@ describe("CollectorStore", () => {
 
     await Promise.all([firstBatch, store.enqueueRows([createRow("two")])]);
 
-    const rows = await database.executeRead("SELECT COUNT(*) AS total FROM events");
-    expect(rows[0]?.total).toBe(2);
+    const rows = await database.executeRead(
+      "SELECT COUNT(*) AS total FROM events",
+    );
+    expect(rows[0]?.["total"]).toBe(2);
   });
 
   it("flushes on the batch timeout", async () => {
     const schema = new SchemaRegistry(200);
     await schema.hydrate(database);
-    const store = new CollectorStore(database, schema, configOverrides({
-      batchSize: 10,
-      batchTimeoutMs: 25
-    }));
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
+    const store = new CollectorStore(
+      database,
+      schema,
+      catalog,
+      configOverrides({
+        batchSize: 10,
+        batchTimeoutMs: 25,
+      }),
+    );
 
     await store.enqueueRows([createRow("one")]);
 
-    const rows = await database.executeRead("SELECT COUNT(*) AS total FROM events");
-    expect(rows[0]?.total).toBe(1);
+    const rows = await database.executeRead(
+      "SELECT COUNT(*) AS total FROM events",
+    );
+    expect(rows[0]?.["total"]).toBe(1);
   });
 
   it("returns a queue saturation error when the pending queue exceeds the limit", async () => {
     const schema = new SchemaRegistry(200);
     await schema.hydrate(database);
-    const store = new CollectorStore(database, schema, configOverrides({
-      batchSize: 10,
-      batchTimeoutMs: 5_000,
-      queueLimit: 1
-    }));
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
+    const store = new CollectorStore(
+      database,
+      schema,
+      catalog,
+      configOverrides({
+        batchSize: 10,
+        batchTimeoutMs: 5_000,
+        queueLimit: 1,
+      }),
+    );
 
     const firstBatch = store.enqueueRows([createRow("one")]);
 
     await expect(store.enqueueRows([createRow("two")])).rejects.toBeInstanceOf(
-      QueueLimitExceededError
+      QueueLimitExceededError,
     );
 
     await store.flush();
     await firstBatch;
   });
 
-  it("drops dynamic columns that exceed the schema cap and still inserts the row", async () => {
-    const schema = new SchemaRegistry(BASELINE_COLUMN_NAMES.length + 1);
+  it("stores dynamic attributes in overflow and reports them in the catalog", async () => {
+    const schema = new SchemaRegistry(200);
     await schema.hydrate(database);
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
     const { logger, warns } = createLogger();
     const store = new CollectorStore(
       database,
       schema,
+      catalog,
       configOverrides({
         batchSize: 1,
-        batchTimeoutMs: 5
+        batchTimeoutMs: 5,
       }),
-      logger
+      logger,
     );
 
     await store.enqueueRows([
       createRow("one", {
         "custom.one": "alpha",
-        "custom.two": "beta"
-      })
+        "custom.two": "beta",
+      }),
     ]);
 
-    const columns = schema.listColumns().map((column) => column.name);
+    const columns = catalog.listColumns(schema).map((column) => column.name);
     expect(columns).toContain("custom.one");
-    expect(columns).not.toContain("custom.two");
+    expect(columns).toContain("custom.two");
 
     const rows = await database.executeRead(
-      'SELECT "custom.one" AS custom_one FROM events WHERE trace_id = ?',
-      ["trace-one"]
+      "SELECT attributes_overflow FROM events WHERE trace_id = ?",
+      ["trace-one"],
     );
-    expect(rows[0]?.custom_one).toBe("alpha");
-    expect(
-      warns.some((entry) =>
-        entry.message.includes("collector dropped dynamic columns after reaching schema cap")
-      )
-    ).toBe(true);
+    expect(rows[0]?.["attributes_overflow"]).toEqual({
+      "custom.one": "alpha",
+      "custom.two": "beta",
+    });
+    expect(warns).toHaveLength(0);
   });
 
-  it("serializes concurrent schema changes across ingest batches", async () => {
+  it("promotes eligible overflow keys and writes subsequent rows to the promoted column", async () => {
     const schema = new SchemaRegistry(200);
     await schema.hydrate(database);
-    const store = new CollectorStore(database, schema, configOverrides({
-      batchSize: 1,
-      batchTimeoutMs: 5
-    }));
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
+    const store = new CollectorStore(
+      database,
+      schema,
+      catalog,
+      configOverrides({
+        batchSize: 1,
+        batchTimeoutMs: 5,
+        promotionMinRows: 1,
+        promotionMinRatio: 0.5,
+        promotionMaxKeysPerRun: 1,
+      }),
+    );
 
-    await Promise.all([
-      store.enqueueRows([
-        createRow("one", {
-          "custom.one": "alpha",
-          "shared.value": "left"
-        })
-      ]),
-      store.enqueueRows([
-        createRow("two", {
-          "custom.two": "beta",
-          "shared.value": "right"
-        })
-      ])
+    await store.enqueueRows([
+      createRow("one", {
+        "shared.value": "left",
+      }),
+    ]);
+    await store.runPromotionCycle();
+    await store.enqueueRows([
+      createRow("two", {
+        "shared.value": "right",
+      }),
     ]);
 
     const rows = await database.executeRead(
-      'SELECT COUNT(*) AS total, MIN("shared.value") AS first_shared, MAX("shared.value") AS last_shared FROM events'
+      'SELECT "shared.value" AS shared_value, attributes_overflow FROM events ORDER BY trace_id ASC',
     );
-    expect(rows[0]?.total).toBe(2);
-    expect(rows[0]?.first_shared).toBe("left");
-    expect(rows[0]?.last_shared).toBe("right");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.["shared_value"]).toBe("left");
+    expect(rows[1]?.["shared_value"]).toBe("right");
+    expect(rows[0]?.["attributes_overflow"]).toEqual({ "shared.value": "left" });
+    expect(rows[1]?.["attributes_overflow"]).toEqual({});
   });
 
   it("serializes retention alongside ingest", async () => {
     const schema = new SchemaRegistry(200);
     await schema.hydrate(database);
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
     const { logger, infos } = createLogger();
     const store = new CollectorStore(
       database,
       schema,
+      catalog,
       configOverrides({
         batchSize: 1,
         batchTimeoutMs: 5,
-        retentionDays: 30
+        retentionDays: 30,
       }),
-      logger
+      logger,
     );
 
-    await store.enqueueRows([
-      createRow("old", {}, "2024-01-01T00:00:00.000Z")
-    ]);
+    await store.enqueueRows([createRow("old", {}, "2024-01-01T00:00:00.000Z")]);
 
     await Promise.all([
       store.runRetention(new Date("2024-03-15T00:00:00.000Z")),
-      store.enqueueRows([createRow("new", {}, "2024-03-14T00:00:00.000Z")])
+      store.enqueueRows([createRow("new", {}, "2024-03-14T00:00:00.000Z")]),
     ]);
 
     const rows = await database.executeRead(
-      "SELECT trace_id FROM events ORDER BY trace_id ASC"
+      "SELECT trace_id FROM events ORDER BY trace_id ASC",
     );
     expect(rows).toEqual([{ trace_id: "trace-new" }]);
     expect(
-      infos.some((entry) => entry.message === "collector retention started")
+      infos.some((entry) => entry.message === "collector retention started"),
     ).toBe(true);
     expect(
-      infos.some((entry) => entry.message === "collector retention completed")
+      infos.some((entry) => entry.message === "collector retention completed"),
     ).toBe(true);
   });
 });
 
-function configOverrides(
-  overrides: Partial<CollectorConfig>
-): CollectorConfig {
+function configOverrides(overrides: Partial<CollectorConfig>): CollectorConfig {
   return {
     duckDbPath: "unused",
     port: 4318,
     batchSize: 100,
     batchTimeoutMs: 1_000,
     retentionDays: 30,
-    maxColumns: 200,
+    maxPromotedColumns: 200,
+    promotionIntervalMs: 300_000,
+    promotionMinRows: 1_000,
+    promotionMinRatio: 0.01,
+    promotionMaxKeysPerRun: 1,
     queueLimit: 10_000,
-    ...overrides
+    ...overrides,
   };
 }

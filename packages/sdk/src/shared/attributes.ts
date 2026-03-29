@@ -2,7 +2,8 @@ import type { Attributes } from "@opentelemetry/api";
 import {
   normalizeEventPrimitive,
   type DynamicEventAttributes,
-  type EventPrimitive
+  type EventPrimitive,
+  type EventValue
 } from "@wide-events/internal";
 
 export type AnnotationAttributes = Record<string, EventPrimitive | undefined>;
@@ -27,7 +28,13 @@ export function toSpanAttributes(attributes: DynamicEventAttributes): Attributes
       continue;
     }
 
-    spanAttributes[key] = value;
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      spanAttributes[key] = value;
+    }
   }
 
   return spanAttributes;
@@ -35,14 +42,14 @@ export function toSpanAttributes(attributes: DynamicEventAttributes): Attributes
 
 export function toOtlpAttributes(
   attributes: DynamicEventAttributes
-): Array<{ key: string; value: Record<string, string | number | boolean> }> {
+): Array<{ key: string; value: Record<string, unknown> }> {
   return Object.entries(attributes).map(([key, value]) => ({
     key,
     value: toOtlpValue(value)
   }));
 }
 
-function toOtlpValue(value: EventPrimitive): Record<string, string | number | boolean> {
+function toOtlpValue(value: EventValue): Record<string, unknown> {
   if (typeof value === "string") {
     return { stringValue: value };
   }
@@ -57,5 +64,24 @@ function toOtlpValue(value: EventPrimitive): Record<string, string | number | bo
       : { doubleValue: value };
   }
 
-  return { stringValue: "null" };
+  if (value === null) {
+    return { stringValue: "null" };
+  }
+
+  if (Array.isArray(value)) {
+    return {
+      arrayValue: {
+        values: value.map((entry) => toOtlpValue(entry))
+      }
+    };
+  }
+
+  return {
+    kvlistValue: {
+      values: Object.entries(value).map(([key, entry]) => ({
+        key,
+        value: toOtlpValue(entry)
+      }))
+    }
+  };
 }

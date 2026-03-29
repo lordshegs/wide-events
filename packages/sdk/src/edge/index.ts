@@ -1,3 +1,4 @@
+import type { EventPrimitive } from "@wide-events/internal";
 import { normalizeAttributes, toOtlpAttributes, type AnnotationAttributes } from "../shared/attributes.js";
 import { postJson } from "../shared/http.js";
 import { createSpanId, createTraceId } from "../shared/ids.js";
@@ -16,7 +17,7 @@ export class WideEvents {
   private traceId: string;
   private readonly startedAt = Date.now();
   private parentSpanId: string | null = null;
-  private readonly attributes = new Map<string, string | number | boolean | null>();
+  private readonly attributes = new Map<string, EventPrimitive>();
 
   constructor(options: EdgeWideEventsOptions) {
     this.options = edgeOptionsSchema.parse(options);
@@ -36,7 +37,14 @@ export class WideEvents {
     }
 
     for (const [key, value] of Object.entries(normalizeAttributes(attributes))) {
-      this.attributes.set(key, value);
+      if (
+        value === null ||
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        this.attributes.set(key, value);
+      }
     }
   }
 

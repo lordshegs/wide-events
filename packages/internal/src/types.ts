@@ -1,8 +1,15 @@
 export type EventPrimitive = string | number | boolean | null;
 
-export type DynamicEventAttributes = Record<string, EventPrimitive>;
+export type EventValue =
+  | EventPrimitive
+  | EventValue[]
+  | {
+      [key: string]: EventValue;
+    };
 
-export interface FlatEventRow extends DynamicEventAttributes {
+export type DynamicEventAttributes = Record<string, EventValue>;
+
+export interface FlatEventRow {
   trace_id: string;
   span_id: string;
   parent_span_id: string | null;
@@ -21,6 +28,7 @@ export interface FlatEventRow extends DynamicEventAttributes {
   "user.id": string | null;
   "user.type": string | null;
   "user.org.id": string | null;
+  attributes_overflow: DynamicEventAttributes;
 }
 
 export type QueryAggregateFunction =
@@ -75,21 +83,51 @@ export interface StructuredQuery {
   scope?: QueryScope | undefined;
 }
 
-export type QueryRow = Record<string, EventPrimitive>;
+export type QueryRow = Record<string, EventValue>;
 
 export interface QueryResult {
   rows: QueryRow[];
 }
 
-export type ColumnOrigin = "baseline" | "dynamic";
-
 export interface ColumnInfo {
   name: string;
-  type: string;
-  origin: ColumnOrigin;
+  storageState: "baseline" | "overflow_only" | "promoted" | "failed";
+  queryable: boolean;
+  inferredType: string | null;
+  promotedType: string | null;
+  seenRows: number;
+  lastSeenAt: string | null;
 }
 
 export interface TraceResult {
   traceId: string;
   rows: QueryRow[];
+}
+
+export type PromotionStorageState =
+  | "overflow_only"
+  | "promoting"
+  | "promoted"
+  | "failed";
+
+export type InferredAttributeType =
+  | "BOOLEAN"
+  | "BIGINT"
+  | "DOUBLE"
+  | "VARCHAR"
+  | "JSON";
+
+export interface AttributeCatalogEntry {
+  key: string;
+  sanitizedKey: string;
+  storageState: PromotionStorageState;
+  inferredType: InferredAttributeType;
+  seenRows: number;
+  nonNullRows: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  promotedColumn: string | null;
+  promotedType: InferredAttributeType | null;
+  promotedAt: string | null;
+  lastError: string | null;
 }
