@@ -29,6 +29,7 @@ export interface FlatEventRow {
   "user.type": string | null;
   "user.org.id": string | null;
   attributes_overflow: DynamicEventAttributes;
+  promoted_attribute_hints: string[];
 }
 
 export type QueryAggregateFunction =

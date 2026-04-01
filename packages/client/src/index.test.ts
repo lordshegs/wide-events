@@ -41,4 +41,31 @@ describe("WideEventsClient", () => {
 
     await expect(client.sql("DELETE FROM events")).rejects.toThrow(/read-only/);
   });
+
+  it("surfaces plain-text collector errors", async () => {
+    const client = new WideEventsClient({
+      url: "http://collector.test",
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response("collector exploded", {
+          status: 500,
+          headers: { "content-type": "text/plain" }
+        })
+      )
+    });
+
+    await expect(client.sql("SELECT 1")).rejects.toThrow("collector exploded");
+  });
+
+  it("falls back to the HTTP status when an error response body is empty", async () => {
+    const client = new WideEventsClient({
+      url: "http://collector.test",
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response("", {
+          status: 503
+        })
+      )
+    });
+
+    await expect(client.sql("SELECT 1")).rejects.toThrow("HTTP 503");
+  });
 });

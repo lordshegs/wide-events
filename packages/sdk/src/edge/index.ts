@@ -1,5 +1,10 @@
 import type { EventPrimitive } from "@wide-events/internal";
-import { normalizeAttributes, toOtlpAttributes, type AnnotationAttributes } from "../shared/attributes.js";
+import {
+  buildAnnotatedAttributes,
+  toOtlpAttributes,
+  type AnnotateOptions,
+  type AnnotationAttributes
+} from "../shared/attributes.js";
 import { postJson } from "../shared/http.js";
 import { createSpanId, createTraceId } from "../shared/ids.js";
 import {
@@ -31,12 +36,15 @@ export class WideEvents {
     this.attributes.set("service.environment", this.options.environment);
   }
 
-  annotate(attributes: AnnotationAttributes): void {
+  annotate<T extends AnnotationAttributes>(
+    attributes: T,
+    options?: AnnotateOptions<T>
+  ): void {
     if (this.options.disabled) {
       return;
     }
 
-    for (const [key, value] of Object.entries(normalizeAttributes(attributes))) {
+    for (const [key, value] of Object.entries(buildAnnotatedAttributes(attributes, options))) {
       if (
         value === null ||
         typeof value === "string" ||

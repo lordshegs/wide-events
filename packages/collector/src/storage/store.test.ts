@@ -20,6 +20,7 @@ function createRow(
   suffix: string,
   attributes: DynamicEventAttributes = {},
   ts: string = "2024-01-01T00:00:00.000Z",
+  promotedAttributeHints: string[] = [],
 ): FlatEventRow {
   return {
     trace_id: `trace-${suffix}`,
@@ -41,6 +42,7 @@ function createRow(
     "user.type": null,
     "user.org.id": null,
     attributes_overflow: attributes,
+    promoted_attribute_hints: promotedAttributeHints,
   };
 }
 
@@ -243,6 +245,250 @@ describe("CollectorStore", () => {
     expect(rows[1]?.["shared_value"]).toBe("right");
     expect(rows[0]?.["attributes_overflow"]).toEqual({ "shared.value": "left" });
     expect(rows[1]?.["attributes_overflow"]).toEqual({});
+  });
+
+  it("promotes hinted keys before the first insert and keeps them out of overflow", async () => {
+    const schema = new SchemaRegistry(200);
+    await schema.hydrate(database);
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
+    const store = new CollectorStore(
+      database,
+      schema,
+      catalog,
+      configOverrides({
+        batchSize: 1,
+        batchTimeoutMs: 5,
+      }),
+    );
+
+    await store.enqueueRows([
+      createRow(
+        "one",
+        {
+          "custom.value": "alpha",
+          "custom.other": "beta",
+        },
+        "2024-01-01T00:00:00.000Z",
+        ["custom.value"],
+      ),
+    ]);
+
+    const rows = await database.executeRead(
+      'SELECT "custom.value" AS custom_value, attributes_overflow FROM events WHERE trace_id = ?',
+      ["trace-one"],
+    );
+    expect(rows[0]?.["custom_value"]).toBe("alpha");
+    expect(rows[0]?.["attributes_overflow"]).toEqual({ "custom.other": "beta" });
+    expect(catalog.getEntry("custom.value")?.storageState).toBe("promoted");
+  });
+
+  it("treats repeated hinted promotion as a no-op while continuing to write the promoted column", async () => {
+    const schema = new SchemaRegistry(200);
+    await schema.hydrate(database);
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
+    const store = new CollectorStore(
+      database,
+      schema,
+      catalog,
+      configOverrides({
+        batchSize: 1,
+        batchTimeoutMs: 5,
+      }),
+    );
+
+    await store.enqueueRows([
+      createRow("one", { "custom.value": "alpha" }, "2024-01-01T00:00:00.000Z", [
+        "custom.value",
+      ]),
+    ]);
+    const firstPromotedAt = catalog.getEntry("custom.value")?.promotedAt;
+
+    await store.enqueueRows([
+      createRow("two", { "custom.value": "beta" }, "2024-01-01T00:00:00.000Z", [
+        "custom.value",
+      ]),
+    ]);
+
+    const rows = await database.executeRead(
+      'SELECT "custom.value" AS custom_value, attributes_overflow FROM events ORDER BY trace_id ASC',
+    );
+    expect(rows.map((row) => row["custom_value"])).toEqual(["alpha", "beta"]);
+    expect(rows.map((row) => row["attributes_overflow"])).toEqual([{}, {}]);
+    expect(catalog.getEntry("custom.value")?.promotedAt).toBe(firstPromotedAt);
+  });
+
+  it("writes multiple promoted columns using the correct raw key to column mapping", async () => {
+    const schema = new SchemaRegistry(200);
+    await schema.hydrate(database);
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
+    const store = new CollectorStore(
+      database,
+      schema,
+      catalog,
+      configOverrides({
+        batchSize: 1,
+        batchTimeoutMs: 5,
+      }),
+    );
+
+    await store.enqueueRows([
+      createRow(
+        "one",
+        {
+          "custom.name": "alpha",
+          "custom.score": 7,
+          "custom.other": "kept"
+        },
+        "2024-01-01T00:00:00.000Z",
+        ["custom.name", "custom.score"],
+      ),
+    ]);
+
+    await store.enqueueRows([
+      createRow(
+        "two",
+        {
+          "custom.name": "beta",
+          "custom.score": 11
+        },
+        "2024-01-01T00:00:00.000Z",
+        ["custom.name", "custom.score"],
+      ),
+    ]);
+
+    const rows = await database.executeRead(
+      'SELECT "custom.name" AS custom_name, "custom.score" AS custom_score, attributes_overflow FROM events ORDER BY trace_id ASC',
+    );
+
+    expect(rows).toEqual([
+      {
+        custom_name: "alpha",
+        custom_score: 7,
+        attributes_overflow: { "custom.other": "kept" }
+      },
+      {
+        custom_name: "beta",
+        custom_score: 11,
+        attributes_overflow: {}
+      }
+    ]);
+  });
+
+  it("preserves overflow rows without allocating a filtered copy when no promoted keys are present", async () => {
+    const schema = new SchemaRegistry(200);
+    await schema.hydrate(database);
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
+    const store = new CollectorStore(
+      database,
+      schema,
+      catalog,
+      configOverrides({
+        batchSize: 1,
+        batchTimeoutMs: 5,
+      }),
+    );
+
+    await store.enqueueRows([
+      createRow("one", {
+        "custom.alpha": "left",
+        "custom.beta": "right"
+      }),
+    ]);
+
+    const rows = await database.executeRead(
+      "SELECT attributes_overflow FROM events WHERE trace_id = ?",
+      ["trace-one"],
+    );
+    expect(rows[0]?.["attributes_overflow"]).toEqual({
+      "custom.alpha": "left",
+      "custom.beta": "right"
+    });
+  });
+
+  it("rejects hinted baseline columns", async () => {
+    const schema = new SchemaRegistry(200);
+    await schema.hydrate(database);
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
+    const store = new CollectorStore(
+      database,
+      schema,
+      catalog,
+      configOverrides({
+        batchSize: 1,
+        batchTimeoutMs: 5,
+      }),
+    );
+
+    await expect(
+      store.enqueueRows([
+        createRow(
+          "one",
+          { "user.id": "u_123" },
+          "2024-01-01T00:00:00.000Z",
+          ["user.id"],
+        ),
+      ]),
+    ).rejects.toThrow(/Cannot promote baseline column "user.id"/);
+  });
+
+  it("rejects hinted keys that are missing from the row attributes", async () => {
+    const schema = new SchemaRegistry(200);
+    await schema.hydrate(database);
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
+    const store = new CollectorStore(
+      database,
+      schema,
+      catalog,
+      configOverrides({
+        batchSize: 1,
+        batchTimeoutMs: 5,
+      }),
+    );
+
+    await expect(
+      store.enqueueRows([
+        createRow("one", { "custom.value": "alpha" }, "2024-01-01T00:00:00.000Z", [
+          "custom.missing",
+        ]),
+      ]),
+    ).rejects.toThrow(/Promotion hint "custom.missing" was not present/);
+  });
+
+  it("rejects hinted promotion when the merged type would become JSON", async () => {
+    const schema = new SchemaRegistry(200);
+    await schema.hydrate(database);
+    const catalog = new AttributeCatalog();
+    await catalog.hydrate(database);
+    const store = new CollectorStore(
+      database,
+      schema,
+      catalog,
+      configOverrides({
+        batchSize: 1,
+        batchTimeoutMs: 5,
+      }),
+    );
+
+    await store.enqueueRows([
+      createRow("one", { "custom.value": 1 }, "2024-01-01T00:00:00.000Z"),
+    ]);
+
+    await expect(
+      store.enqueueRows([
+        createRow(
+          "two",
+          { "custom.value": "alpha" },
+          "2024-01-01T00:00:00.000Z",
+          ["custom.value"],
+        ),
+      ]),
+    ).rejects.toThrow(/Promotion hint "custom.value" requires a primitive value/);
   });
 
   it("serializes retention alongside ingest", async () => {

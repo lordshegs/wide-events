@@ -1,12 +1,21 @@
 import {
   BASELINE_COLUMN_NAMES,
+  isBaselineColumn,
+  isPrimitiveEventValue,
   quoteIdentifier,
+  sanitizeIdentifier,
+  type EventPrimitive,
   type FlatEventRow,
+  type InferredAttributeType,
 } from "@wide-events/internal";
 import type { CollectorConfig } from "../config.js";
 import { QueueLimitExceededError } from "../errors.js";
 import { noopCollectorLogger, type CollectorLogger } from "../logger.js";
-import type { AttributeCatalog } from "./attribute-catalog.js";
+import {
+  inferValueType,
+  mergeInferredType,
+  type AttributeCatalog
+} from "./attribute-catalog.js";
 import type { DuckDbDatabase } from "./database.js";
 import type { SchemaRegistry } from "./schema-registry.js";
 import { SerializedExecutor } from "./serialized-executor.js";
@@ -201,6 +210,12 @@ export class CollectorStore {
 
     try {
       await this.executor.enqueue(async () => {
+        await ensureHintedPromotions(
+          this.database,
+          this.schema,
+          this.catalog,
+          rows,
+        );
         await this.catalog.recordRows(this.database, rows);
         await insertRows(this.database, this.schema, this.catalog, rows);
       });
@@ -216,6 +231,59 @@ export class CollectorStore {
   }
 }
 
+async function ensureHintedPromotions(
+  database: DuckDbDatabase,
+  schema: SchemaRegistry,
+  catalog: AttributeCatalog,
+  rows: readonly FlatEventRow[],
+): Promise<void> {
+  const hintedKeys = new Set<string>();
+
+  for (const row of rows) {
+    for (const key of row.promoted_attribute_hints) {
+      hintedKeys.add(key);
+    }
+  }
+
+  for (const key of hintedKeys) {
+    if (isBaselineColumn(key)) {
+      throw new Error(`Cannot promote baseline column "${key}"`);
+    }
+
+    const existing = catalog.getEntry(key);
+    if (existing?.storageState === "promoted") {
+      continue;
+    }
+
+    const value = firstNonNullHintedValue(rows, key);
+    if (typeof value === "undefined") {
+      throw new Error(`Promotion hint "${key}" was not present in annotated attributes`);
+    }
+
+    if (!isPrimitiveEventValue(value)) {
+      throw new Error(`Promotion hint "${key}" requires a primitive value`);
+    }
+
+    const inferredType = resolveHintedPromotionType(
+      existing?.inferredType ?? null,
+      value,
+      key,
+    );
+    const promotedColumn = existing?.sanitizedKey ?? sanitizeIdentifier(key);
+    const promoted = await schema.ensurePromotedColumn(
+      database,
+      promotedColumn,
+      inferredType,
+    );
+
+    if (!promoted) {
+      throw new Error(`Max promoted column count reached while promoting "${key}"`);
+    }
+
+    await catalog.markPromoted(database, key, promotedColumn, inferredType);
+  }
+}
+
 async function insertRows(
   database: DuckDbDatabase,
   schema: SchemaRegistry,
@@ -227,6 +295,7 @@ async function insertRows(
   }
 
   const promotedColumns = catalog.getPromotedColumns();
+  const promotedColumnsByName = buildPromotedColumnsByName(promotedColumns);
   const columnNames = collectInsertColumns(rows, promotedColumns);
   const placeholders = rows
     .map(() => {
@@ -256,9 +325,8 @@ async function insertRows(
         continue;
       }
 
-      const rawKey = findPromotedKeyByColumn(promotedColumns, column);
-      const promoted = rawKey ? promotedColumns.get(rawKey) : null;
-      const value = rawKey ? row.attributes_overflow[rawKey] : null;
+      const promoted = promotedColumnsByName.get(column);
+      const value = promoted ? row.attributes_overflow[promoted.key] : null;
       values.push(
         promoted ? normalizePromotedValue(value, promoted.type) : null,
       );
@@ -320,6 +388,19 @@ function buildOverflowAttributes(
   row: FlatEventRow,
   promotedColumns: Map<string, { column: string; type: string }>,
 ): Record<string, unknown> {
+  let needsFiltering = false;
+
+  for (const key of Object.keys(row.attributes_overflow)) {
+    if (promotedColumns.has(key)) {
+      needsFiltering = true;
+      break;
+    }
+  }
+
+  if (!needsFiltering) {
+    return row.attributes_overflow;
+  }
+
   const overflow: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(row.attributes_overflow)) {
@@ -333,17 +414,54 @@ function buildOverflowAttributes(
   return overflow;
 }
 
-function findPromotedKeyByColumn(
-  promotedColumns: Map<string, { column: string; type: string }>,
-  column: string,
-): string | null {
-  for (const [key, entry] of promotedColumns.entries()) {
-    if (entry.column === column) {
-      return key;
+function firstNonNullHintedValue(
+  rows: readonly FlatEventRow[],
+  key: string,
+): EventPrimitive | undefined {
+  let sawKey = false;
+
+  for (const row of rows) {
+    if (!(key in row.attributes_overflow)) {
+      continue;
+    }
+
+    sawKey = true;
+    const value = row.attributes_overflow[key];
+    if (value !== null) {
+      return isPrimitiveEventValue(value) ? value : null;
     }
   }
 
-  return null;
+  return sawKey ? null : undefined;
+}
+
+function resolveHintedPromotionType(
+  existingType: InferredAttributeType | null,
+  value: EventPrimitive,
+  key: string,
+): InferredAttributeType {
+  const nextType = inferValueType(value);
+  const inferredType = existingType
+    ? mergeInferredType(existingType, nextType)
+    : nextType;
+
+  if (inferredType === "JSON") {
+    throw new Error(`Promotion hint "${key}" requires a primitive value`);
+  }
+
+  return inferredType;
+}
+
+function buildPromotedColumnsByName(
+  promotedColumns: Map<string, { column: string; type: string }>,
+): Map<string, { key: string; type: string }> {
+  const promotedColumnsByName = new Map<string, { key: string; type: string }>();
+
+  for (const [key, entry] of promotedColumns.entries()) {
+    promotedColumnsByName.set(entry.column, { key, type: entry.type });
+  }
+
+  return promotedColumnsByName;
 }
 
 function normalizePromotedValue(value: unknown, type: string): unknown {

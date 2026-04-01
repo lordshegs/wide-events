@@ -124,8 +124,11 @@ Returns all stored rows for a trace in timestamp order:
 - All spans are stored, not only `main=true` rows.
 - Structured queries default to `main=true` semantics unless `scope: "all"` is requested.
 - New attributes land in `attributes_overflow MAP(VARCHAR, JSON)` first.
+- SDKs can attach explicit promotion hints for primitive custom attributes. The collector consumes those hints internally and promotes the key before inserting the first hinted row.
 - Stable scalar keys can later be promoted into typed DuckDB columns by the background scheduler.
+- Explicit promotion hints are a fast path for eager promotion. The background scheduler still handles unhinted overflow keys.
 - Promoted keys are backfilled into their typed column and future ingest becomes column-only for that key.
+- Hint metadata is not persisted in `attributes_overflow` and is not queryable as event data.
 - Retention deletes old rows on a daily schedule and runs through the same serialized write path as inserts and schema changes.
 
 ## Logging

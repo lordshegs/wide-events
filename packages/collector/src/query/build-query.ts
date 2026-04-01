@@ -28,18 +28,16 @@ export function compileStructuredQuery(query: StructuredQuery): CompiledQuery {
     const whereParts: string[] = [];
     const scope = query.scope ?? "main";
     const filters = [...(query.filters ?? [])];
-    const groupByFields = (query.groupBy ?? []).map((field) =>
-      sanitizeIdentifier(field)
-    );
+    const groupByFields = (query.groupBy ?? []).map(sanitizeIdentifier);
     const selectParts = [
-      ...groupByFields.map(quoteIdentifier),
+      ...groupByFields.map(quoteSanitizedIdentifier),
       ...query.select.map(compileSelect)
     ];
     const selectSql = selectParts.join(", ");
 
     if (
       scope === "main" &&
-      filters.some((filter) => sanitizeIdentifier(filter.field) === "main")
+      filters.some((filter) => sanitizeFilterField(filter) === "main")
     ) {
       throw new BadRequestError(
         'Structured query scope "main" already applies main=true; remove the explicit main filter'
@@ -61,9 +59,9 @@ export function compileStructuredQuery(query: StructuredQuery): CompiledQuery {
       whereParts.push(compileFilter(filter, params));
     }
 
-    const groupBy = groupByFields.map(quoteIdentifier);
+    const groupBy = groupByFields.map(quoteSanitizedIdentifier);
     const orderBy = query.orderBy
-      ? ` ORDER BY ${quoteIdentifier(sanitizeIdentifier(query.orderBy.field))} ${
+      ? ` ORDER BY ${quoteSanitizedIdentifier(sanitizeIdentifier(query.orderBy.field))} ${
           query.orderBy.dir.toUpperCase() === "DESC" ? "DESC" : "ASC"
         }`
       : "";
@@ -101,7 +99,9 @@ export function assertReadOnlySql(sql: string): void {
 }
 
 function compileSelect(select: QuerySelectItem): string {
-  const alias = select.as ? ` AS ${quoteIdentifier(sanitizeIdentifier(select.as))}` : "";
+  const alias = select.as
+    ? ` AS ${quoteSanitizedIdentifier(sanitizeIdentifier(select.as))}`
+    : "";
 
   switch (select.fn) {
     case "COUNT":
@@ -127,13 +127,13 @@ function percentileSelect(
   select: QuerySelectItem,
   alias: string
 ): string {
-  return `PERCENTILE_CONT(${percentile}) WITHIN GROUP (ORDER BY ${quoteIdentifier(
+  return `PERCENTILE_CONT(${percentile}) WITHIN GROUP (ORDER BY ${quoteSanitizedIdentifier(
     requireField(select)
   )})${alias}`;
 }
 
 function compileFilter(filter: QueryFilter, params: EventPrimitive[]): string {
-  const field = quoteIdentifier(filter.field);
+  const field = quoteSanitizedIdentifier(sanitizeFilterField(filter));
 
   switch (filter.op) {
     case "eq":
@@ -184,4 +184,12 @@ function requireField(select: QuerySelectItem): string {
   }
 
   return sanitizeIdentifier(select.field);
+}
+
+function sanitizeFilterField(filter: QueryFilter): string {
+  return sanitizeIdentifier(filter.field);
+}
+
+function quoteSanitizedIdentifier(identifier: string): string {
+  return `"${identifier}"`;
 }

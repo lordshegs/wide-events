@@ -87,6 +87,10 @@ export class AttributeCatalog {
     return promoted;
   }
 
+  getEntry(key: string): AttributeCatalogEntry | null {
+    return this.entries.get(key) ?? null;
+  }
+
   getFieldStorageState(field: string): PromotionStorageState | "baseline" | "unknown" {
     if (BASELINE_COLUMN_NAMES.includes(field)) {
       return "baseline";
@@ -202,10 +206,22 @@ export class AttributeCatalog {
     promotedColumn: string,
     promotedType: InferredAttributeType
   ): Promise<void> {
-    const entry = this.entries.get(key);
-    if (!entry) {
-      return;
-    }
+    const now = new Date().toISOString();
+    const entry =
+      this.entries.get(key) ?? {
+        key,
+        sanitizedKey: promotedColumn,
+        storageState: "overflow_only",
+        inferredType: promotedType,
+        seenRows: 0,
+        nonNullRows: 0,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        promotedColumn: null,
+        promotedType: null,
+        promotedAt: null,
+        lastError: null
+      };
 
     const updated: AttributeCatalogEntry = {
       ...entry,
@@ -276,10 +292,10 @@ function applyRowAttributes(
 }
 
 function nonNullValueType(value: EventValue): InferredAttributeType {
-  return value === null ? "JSON" : inferValueType(value);
+  return inferValueType(value);
 }
 
-function inferValueType(value: EventValue): InferredAttributeType {
+export function inferValueType(value: EventValue): InferredAttributeType {
   if (value === null) {
     return "JSON";
   }
@@ -299,7 +315,7 @@ function inferValueType(value: EventValue): InferredAttributeType {
   return "JSON";
 }
 
-function mergeInferredType(
+export function mergeInferredType(
   current: InferredAttributeType,
   next: InferredAttributeType
 ): InferredAttributeType {

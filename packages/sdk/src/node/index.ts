@@ -1,4 +1,8 @@
-import { normalizeAttributes, type AnnotationAttributes } from "../shared/attributes.js";
+import {
+  buildAnnotatedAttributes,
+  type AnnotateOptions,
+  type AnnotationAttributes
+} from "../shared/attributes.js";
 import {
   resolveNodeOptions,
   type ResolvedWideEventsOptions,
@@ -37,12 +41,15 @@ export class WideEvents {
     return this.runtime ? createMiddleware(this.runtime) : noopMiddleware();
   }
 
-  annotate(attributes: AnnotationAttributes): void {
+  annotate<T extends AnnotationAttributes>(
+    attributes: T,
+    options?: AnnotateOptions<T>
+  ): void {
     if (this.options.disabled || !this.runtime) {
       return;
     }
 
-    annotateCurrentSpan(normalizeAttributes(attributes));
+    annotateCurrentSpan(buildAnnotatedAttributes(attributes, options));
   }
 
   async forceFlush(): Promise<void> {

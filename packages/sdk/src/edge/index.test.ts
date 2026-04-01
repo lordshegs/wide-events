@@ -69,6 +69,66 @@ describe("edge WideEvents", () => {
     );
   });
 
+  it("emits internal promotion hints alongside annotated attributes", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(null, { status: 202 })
+    );
+    const wideEvents = new WideEvents({
+      serviceName: "edge-service",
+      collectorUrl: "http://collector.test",
+      environment: "test"
+    });
+
+    wideEvents.annotate(
+      {
+        "custom.value": "alpha"
+      },
+      { promote: ["custom.value"] }
+    );
+    await wideEvents.flush(fetchImpl);
+
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)) as {
+      resourceSpans: Array<{
+        scopeSpans: Array<{
+          spans: Array<{
+            attributes: Array<{ key: string; value: Record<string, unknown> }>;
+          }>;
+        }>;
+      }>;
+    };
+    const attributes = body.resourceSpans[0]?.scopeSpans[0]?.spans[0]?.attributes ?? [];
+    expect(attributes).toContainEqual({
+      key: "wide_events.promote.custom.value",
+      value: { boolValue: true }
+    });
+  });
+
+  it("throws for invalid promotion hints", () => {
+    const wideEvents = new WideEvents({
+      serviceName: "edge-service",
+      collectorUrl: "http://collector.test",
+      environment: "test"
+    });
+
+    expect(() => {
+      wideEvents.annotate(
+        {
+          "custom.value": "alpha"
+        },
+        { promote: ["custom.missing" as "custom.value"] }
+      );
+    }).toThrow(/promote key "custom.missing" is missing/);
+
+    expect(() => {
+      wideEvents.annotate(
+        {
+          "user.id": "u_123"
+        },
+        { promote: ["user.id"] }
+      );
+    }).toThrow(/cannot promote baseline column "user.id"/);
+  });
+
   it("ignores invalid traceparent values", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(null, { status: 202 })

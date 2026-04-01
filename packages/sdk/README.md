@@ -40,10 +40,12 @@ const wideEvents = new WideEvents({
 | Method | Purpose |
 | --- | --- |
 | `middleware()` | Creates request middleware that establishes the service-root span and request context. |
-| `annotate(attributes)` | Adds attributes to the active service-root span. Outside an active context this is a no-op. |
+| `annotate(attributes, options?)` | Adds primitive attributes to the active service-root span. Outside an active context this is a no-op. |
 | `forceFlush()` | Flushes pending spans to the collector. |
 | `wrapHandler(handler)` | Wraps a Lambda-style handler and guarantees flush in `finally`. |
 | `shutdown()` | Releases the process-wide runtime when you are done with it. |
+
+`annotate()` accepts only primitive values: `string`, `number`, `boolean`, or `null`. You can request immediate promotion for selected custom attributes with `options.promote`.
 
 ### Express-style or raw HTTP usage
 
@@ -77,6 +79,12 @@ const server = createServer((request, response) => {
         main: true,
         "http.route": request.url ?? "/"
       });
+      wideEvents.annotate(
+        {
+          "tenant.plan": "pro"
+        },
+        { promote: ["tenant.plan"] }
+      );
       response.statusCode = 200;
       response.end("ok");
     }
@@ -87,6 +95,8 @@ const server = createServer((request, response) => {
 ### `main=true` semantics
 
 The SDK treats the service-root span as the primary wide-event row. `annotate()` writes onto that span, not onto whichever child span happens to be active. The collector still stores all spans, but structured queries default to `main=true`.
+
+Promotion hints are internal storage metadata. They are sent to the collector so it can create promoted columns eagerly, but they are not exposed as user-visible event attributes.
 
 ### Sampling
 
@@ -155,7 +165,7 @@ const wideEvents = new WideEvents({
 
 | Method | Purpose |
 | --- | --- |
-| `annotate(attributes)` | Adds attributes to the span being built. |
+| `annotate(attributes, options?)` | Adds primitive attributes to the span being built and can request eager promotion for selected custom attributes. |
 | `setParentContext(traceparent)` | Adopts an inbound `traceparent` when valid. Invalid values are ignored. |
 | `getTraceparent()` | Returns a `traceparent` for propagating outbound work. |
 | `flush(fetchImpl?)` | Sends the span to the collector. Safe to call more than once. |
@@ -178,6 +188,12 @@ export default {
       "http.route": new URL(request.url).pathname,
       "http.request.method": request.method
     });
+    wideEvents.annotate(
+      {
+        "tenant.plan": "pro"
+      },
+      { promote: ["tenant.plan"] }
+    );
 
     ctx.waitUntil(wideEvents.flush());
     return new Response("ok");
@@ -186,3 +202,5 @@ export default {
 ```
 
 Edge runtimes do not auto-instrument. You are responsible for propagating `traceparent` and for calling `flush()`, usually with `waitUntil()`.
+
+Promotion is forward-only. The collector promotes the first hinted occurrence and writes future rows into the promoted column, but it does not backfill historical rows synchronously.

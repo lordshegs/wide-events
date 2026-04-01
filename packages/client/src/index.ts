@@ -62,18 +62,31 @@ export class WideEventsClient {
 
 async function readJsonResponse<TResponse>(response: Response): Promise<TResponse> {
   if (!response.ok) {
-    const payload = await response
-      .json()
-      .catch(async () => ({ error: await response.text() }));
+    const body = await response.text();
+    const payload = tryParseJson(body);
     const message =
       payload &&
       typeof payload === "object" &&
       "error" in payload &&
       typeof payload.error === "string"
         ? payload.error
+        : body
+          ? body
         : `HTTP ${response.status}`;
     throw new Error(message);
   }
 
   return (await response.json()) as TResponse;
+}
+
+function tryParseJson(value: string): unknown {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
