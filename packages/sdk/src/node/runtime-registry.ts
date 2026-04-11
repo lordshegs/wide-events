@@ -1,6 +1,6 @@
 import type { SpanExporter } from "@opentelemetry/sdk-trace-node";
-import type { ResolvedWideEventsOptions } from "../shared/options.js";
-import { NodeWideEventsRuntime } from "./runtime.js";
+import type { ResolvedWideEventsOptions } from "../shared/options";
+import { NodeWideEventsRuntime } from "./runtime";
 
 interface RuntimeSlot {
   key: string;

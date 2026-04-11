@@ -2,7 +2,7 @@
 
 Self-hosted observability for wide-event style analysis on DuckDB.
 
-`wide-events` stores one row per span, but treats `main=true` service-root spans as the primary rows for product-style queries. The collector accepts OTLP over HTTP JSON, writes into DuckDB, and exposes a small query API for dashboards, scripts, notebooks, and trace drill-down.
+`wide-events` stores one row per span, but treats `main=true` service-root spans as the primary rows for product-style queries. The collector accepts OTLP over HTTP JSON, writes into DuckDB, and exposes a small query API for dashboards, scripts, notebooks, and trace drill-down. Dynamic attributes land in `attributes_overflow` first and can later be promoted into typed DuckDB columns by the collector.
 
 ## Packages
 
@@ -116,7 +116,7 @@ const result = await client.query({
 });
 ```
 
-Structured queries default to `scope: "main"`, which means the collector injects `main = true` unless you explicitly set `scope: "all"`.
+Structured queries default to `scope: "main"`, which means the collector injects `main = true` unless you explicitly set `scope: "all"`. Structured queries target baseline and promoted columns; overflow-only keys remain available through `/sql` and trace inspection.
 
 ## Collector Configuration
 
@@ -130,7 +130,11 @@ Optional:
 - `WIDE_EVENTS_BATCH_SIZE`: default `100`
 - `WIDE_EVENTS_BATCH_TIMEOUT_MS`: default `1000`
 - `WIDE_EVENTS_RETENTION_DAYS`: default `30`
-- `WIDE_EVENTS_MAX_COLUMNS`: default `200`
+- `WIDE_EVENTS_MAX_PROMOTED_COLUMNS`: default `200`
+- `WIDE_EVENTS_PROMOTION_INTERVAL_MS`: default `300000`
+- `WIDE_EVENTS_PROMOTION_MIN_ROWS`: default `1000`
+- `WIDE_EVENTS_PROMOTION_MIN_RATIO`: default `0.01`
+- `WIDE_EVENTS_PROMOTION_MAX_KEYS_PER_RUN`: default `1`
 - `WIDE_EVENTS_QUEUE_LIMIT`: default `10000`
 
 ## Examples
@@ -142,6 +146,7 @@ Optional:
 ## Operational Notes
 
 - The collector stores all spans, not only `main=true` rows. Trace reconstruction uses all rows for a `trace_id`.
-- Structured queries default to `main=true` semantics. Use `scope: "all"` when you want all spans.
+- Structured queries default to `main=true` semantics and expose baseline plus promoted fields. Use `scope: "all"` when you want all spans.
+- Overflow-only keys stay queryable through `/sql`, for example with `map_extract_value(attributes_overflow, 'feature.flag')`.
 - `/sql` is intentionally read-only in v0.1.
 - The collector has no built-in auth in v0.1. Keep it behind a trusted network boundary.

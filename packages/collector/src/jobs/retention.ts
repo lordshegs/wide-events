@@ -1,4 +1,4 @@
-import type { CollectorStore } from "../storage/store.js";
+import type { CollectorStore } from "../storage/store";
 
 export class RetentionJob {
   private timer: NodeJS.Timeout | undefined;

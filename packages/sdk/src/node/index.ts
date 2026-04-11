@@ -1,13 +1,17 @@
-import { normalizeAttributes, type AnnotationAttributes } from "../shared/attributes.js";
+import {
+  buildAnnotatedAttributes,
+  type AnnotateOptions,
+  type AnnotationAttributes
+} from "../shared/attributes";
 import {
   resolveNodeOptions,
   type ResolvedWideEventsOptions,
   type WideEventsOptions
-} from "../shared/options.js";
-import { wrapLambdaHandler } from "./lambda.js";
-import { annotateCurrentSpan, createMiddleware } from "./middleware.js";
-import { acquireNodeRuntime } from "./runtime-registry.js";
-import type { NodeWideEventsRuntime } from "./runtime.js";
+} from "../shared/options";
+import { wrapLambdaHandler } from "./lambda";
+import { annotateCurrentSpan, createMiddleware } from "./middleware";
+import { acquireNodeRuntime } from "./runtime-registry";
+import type { NodeWideEventsRuntime } from "./runtime";
 
 const noopMiddleware = () => (_request: unknown, _response: unknown, next: () => void) => {
   next();
@@ -37,12 +41,15 @@ export class WideEvents {
     return this.runtime ? createMiddleware(this.runtime) : noopMiddleware();
   }
 
-  annotate(attributes: AnnotationAttributes): void {
+  annotate<T extends AnnotationAttributes>(
+    attributes: T,
+    options?: AnnotateOptions<T>
+  ): void {
     if (this.options.disabled || !this.runtime) {
       return;
     }
 
-    annotateCurrentSpan(normalizeAttributes(attributes));
+    annotateCurrentSpan(buildAnnotatedAttributes(attributes, options));
   }
 
   async forceFlush(): Promise<void> {
@@ -71,4 +78,4 @@ export class WideEvents {
   }
 }
 
-export type { WideEventsOptions } from "../shared/options.js";
+export type { WideEventsOptions } from "../shared/options";

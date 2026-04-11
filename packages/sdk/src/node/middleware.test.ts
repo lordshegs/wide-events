@@ -1,7 +1,7 @@
 import { context, type Attributes, type HrTime, type Link, type Span, type SpanContext, type SpanStatus } from "@opentelemetry/api";
 import { describe, expect, it } from "vitest";
-import { createMiddleware } from "./middleware.js";
-import type { NodeWideEventsRuntime } from "./runtime.js";
+import { createMiddleware } from "./middleware";
+import type { NodeWideEventsRuntime } from "./runtime";
 
 class FakeSpan implements Span {
   endCalls = 0;

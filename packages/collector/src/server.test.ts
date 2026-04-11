@@ -1,8 +1,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import type { CollectorConfig } from "./config";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createCollectorServer } from "./server.js";
+import { createCollectorServer } from "./server";
 
 describe("collector server", () => {
   let workspaceDir = "";
@@ -18,15 +19,13 @@ describe("collector server", () => {
   });
 
   it("ingests OTLP traces and serves query and trace results", async () => {
-    const server = await createCollectorServer({
-      duckDbPath: join(workspaceDir, "events.duckdb"),
-      port: 4318,
-      batchSize: 10,
-      batchTimeoutMs: 10,
-      retentionDays: 30,
-      maxColumns: 200,
-      queueLimit: 1_000
-    });
+    const server = await createCollectorServer(
+      createTestCollectorConfig({
+        duckDbPath: join(workspaceDir, "events.duckdb"),
+        batchSize: 10,
+        batchTimeoutMs: 10,
+      }),
+    );
 
     try {
       const ingestResponse = await server.app.inject({
@@ -39,9 +38,9 @@ describe("collector server", () => {
                 attributes: [
                   {
                     key: "service.name",
-                    value: { stringValue: "payments" }
-                  }
-                ]
+                    value: { stringValue: "payments" },
+                  },
+                ],
               },
               scopeSpans: [
                 {
@@ -54,8 +53,8 @@ describe("collector server", () => {
                       attributes: [
                         { key: "main", value: { boolValue: true } },
                         { key: "http.route", value: { stringValue: "/pay" } },
-                        { key: "error", value: { boolValue: false } }
-                      ]
+                        { key: "error", value: { boolValue: false } },
+                      ],
                     },
                     {
                       traceId: "trace-1",
@@ -66,16 +65,16 @@ describe("collector server", () => {
                       attributes: [
                         {
                           key: "db.statement",
-                          value: { stringValue: "select 1" }
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                          value: { stringValue: "select 1" },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       });
 
       expect(ingestResponse.statusCode).toBe(202);
@@ -86,28 +85,28 @@ describe("collector server", () => {
         payload: {
           select: [{ fn: "COUNT", as: "total" }],
           filters: [{ field: "trace_id", op: "eq", value: "trace-1" }],
-          scope: "all"
-        }
+          scope: "all",
+        },
       });
 
       expect(queryResponse.statusCode).toBe(200);
-      expect(queryResponse.json().rows[0]?.total).toBe(2);
+      expect(queryResponse.json().rows[0]?.["total"]).toBe(2);
 
       const mainOnlyResponse = await server.app.inject({
         method: "POST",
         url: "/query",
         payload: {
           select: [{ fn: "COUNT", as: "total" }],
-          filters: [{ field: "trace_id", op: "eq", value: "trace-1" }]
-        }
+          filters: [{ field: "trace_id", op: "eq", value: "trace-1" }],
+        },
       });
 
       expect(mainOnlyResponse.statusCode).toBe(200);
-      expect(mainOnlyResponse.json().rows[0]?.total).toBe(1);
+      expect(mainOnlyResponse.json().rows[0]?.["total"]).toBe(1);
 
       const traceResponse = await server.app.inject({
         method: "GET",
-        url: "/trace/trace-1"
+        url: "/trace/trace-1",
       });
 
       expect(traceResponse.statusCode).toBe(200);
@@ -115,14 +114,16 @@ describe("collector server", () => {
 
       const columnsResponse = await server.app.inject({
         method: "GET",
-        url: "/columns"
+        url: "/columns",
       });
 
       expect(columnsResponse.statusCode).toBe(200);
       expect(
         columnsResponse
           .json()
-          .columns.some((column: { name: string }) => column.name === "db.statement")
+          .columns.some(
+            (column: { name: string }) => column.name === "db.statement",
+          ),
       ).toBe(true);
 
       const conflictingScopeResponse = await server.app.inject({
@@ -130,8 +131,8 @@ describe("collector server", () => {
         url: "/query",
         payload: {
           select: [{ fn: "COUNT", as: "total" }],
-          filters: [{ field: "main", op: "eq", value: true }]
-        }
+          filters: [{ field: "main", op: "eq", value: true }],
+        },
       });
 
       expect(conflictingScopeResponse.statusCode).toBe(400);
@@ -142,15 +143,13 @@ describe("collector server", () => {
   });
 
   it("returns 400 for malformed OTLP payloads", async () => {
-    const server = await createCollectorServer({
-      duckDbPath: join(workspaceDir, "events.duckdb"),
-      port: 4318,
-      batchSize: 10,
-      batchTimeoutMs: 10,
-      retentionDays: 30,
-      maxColumns: 200,
-      queueLimit: 1_000
-    });
+    const server = await createCollectorServer(
+      createTestCollectorConfig({
+        duckDbPath: join(workspaceDir, "events.duckdb"),
+        batchSize: 10,
+        batchTimeoutMs: 10,
+      }),
+    );
 
     try {
       const response = await server.app.inject({
@@ -163,14 +162,14 @@ describe("collector server", () => {
                 {
                   spans: [
                     {
-                      spanId: "span-1"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                      spanId: "span-1",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       });
 
       expect(response.statusCode).toBe(400);
@@ -181,23 +180,21 @@ describe("collector server", () => {
   });
 
   it("rejects mutating sql requests", async () => {
-    const server = await createCollectorServer({
-      duckDbPath: join(workspaceDir, "events.duckdb"),
-      port: 4318,
-      batchSize: 10,
-      batchTimeoutMs: 10,
-      retentionDays: 30,
-      maxColumns: 200,
-      queueLimit: 1_000
-    });
+    const server = await createCollectorServer(
+      createTestCollectorConfig({
+        duckDbPath: join(workspaceDir, "events.duckdb"),
+        batchSize: 10,
+        batchTimeoutMs: 10,
+      }),
+    );
 
     try {
       const response = await server.app.inject({
         method: "POST",
         url: "/sql",
         payload: {
-          sql: "DELETE FROM events"
-        }
+          sql: "DELETE FROM events",
+        },
       });
 
       expect(response.statusCode).toBe(400);
@@ -208,15 +205,14 @@ describe("collector server", () => {
   });
 
   it("returns 503 when the ingest queue is saturated", async () => {
-    const server = await createCollectorServer({
-      duckDbPath: join(workspaceDir, "events.duckdb"),
-      port: 4318,
-      batchSize: 10,
-      batchTimeoutMs: 5_000,
-      retentionDays: 30,
-      maxColumns: 200,
-      queueLimit: 1
-    });
+    const server = await createCollectorServer(
+      createTestCollectorConfig({
+        duckDbPath: join(workspaceDir, "events.duckdb"),
+        batchSize: 10,
+        batchTimeoutMs: 5_000,
+        queueLimit: 1,
+      }),
+    );
 
     try {
       const firstRequest = server.app.inject({
@@ -229,9 +225,9 @@ describe("collector server", () => {
                 attributes: [
                   {
                     key: "service.name",
-                    value: { stringValue: "payments" }
-                  }
-                ]
+                    value: { stringValue: "payments" },
+                  },
+                ],
               },
               scopeSpans: [
                 {
@@ -240,14 +236,14 @@ describe("collector server", () => {
                       traceId: "trace-1",
                       spanId: "span-1",
                       startTimeUnixNano: "1000000000",
-                      endTimeUnixNano: "2000000000"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                      endTimeUnixNano: "2000000000",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       });
 
       await new Promise((resolve) => setTimeout(resolve, 25));
@@ -262,9 +258,9 @@ describe("collector server", () => {
                 attributes: [
                   {
                     key: "service.name",
-                    value: { stringValue: "payments" }
-                  }
-                ]
+                    value: { stringValue: "payments" },
+                  },
+                ],
               },
               scopeSpans: [
                 {
@@ -273,14 +269,14 @@ describe("collector server", () => {
                       traceId: "trace-2",
                       spanId: "span-2",
                       startTimeUnixNano: "1000000000",
-                      endTimeUnixNano: "2000000000"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+                      endTimeUnixNano: "2000000000",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       });
 
       expect(secondResponse.statusCode).toBe(503);
@@ -291,6 +287,25 @@ describe("collector server", () => {
       expect(firstResponse.statusCode).toBe(202);
     } finally {
       await server.close();
-    }
-  });
+  }
+});
+
+function createTestCollectorConfig(
+  overrides: Partial<CollectorConfig>,
+): CollectorConfig {
+  return {
+    duckDbPath: "unused",
+    port: 4318,
+    batchSize: 100,
+    batchTimeoutMs: 1_000,
+    retentionDays: 30,
+    maxPromotedColumns: 200,
+    promotionIntervalMs: 300_000,
+    promotionMinRows: 1_000,
+    promotionMinRatio: 0.01,
+    promotionMaxKeysPerRun: 1,
+    queueLimit: 10_000,
+    ...overrides,
+  };
+}
 });

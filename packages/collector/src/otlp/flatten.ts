@@ -1,7 +1,8 @@
 import {
-  normalizeEventPrimitive,
+  getPromotionHintKey,
+  isPromotionHintAttribute,
   type DynamicEventAttributes,
-  type EventPrimitive,
+  type EventValue,
   type FlatEventRow
 } from "@wide-events/internal";
 import type {
@@ -9,7 +10,7 @@ import type {
   OtlpExportTraceServiceRequest,
   OtlpKeyValue,
   OtlpSpan
-} from "./types.js";
+} from "./types";
 
 export function flattenTraceRequest(
   request: OtlpExportTraceServiceRequest
@@ -36,8 +37,6 @@ export function flattenSpan(
   span: OtlpSpan
 ): FlatEventRow {
   const spanAttributes = extractAttributes(span.attributes ?? []);
-  const merged = { ...resourceAttributes, ...spanAttributes };
-
   const startTime = parseNanoseconds(span.startTimeUnixNano);
   const endTime = parseNanoseconds(span.endTimeUnixNano);
 
@@ -46,41 +45,106 @@ export function flattenSpan(
   const traceId = requireString(span.traceId, "span.traceId");
   const spanId = requireString(span.spanId, "span.spanId");
 
+  const row: FlatEventRow = createBaseRow(span, traceId, spanId, startTime, durationMs);
+  const combinedAttributes: DynamicEventAttributes = {
+    ...resourceAttributes,
+    ...spanAttributes
+  };
+
+  for (const [key, value] of Object.entries(combinedAttributes)) {
+    if (isPromotionHintAttribute(key, value)) {
+      row.promoted_attribute_hints.push(getPromotionHintKey(key));
+      continue;
+    }
+
+    switch (key) {
+      case "main":
+        row.main = typeof value === "boolean" ? value : row.main;
+        break;
+      case "sample_rate":
+        row.sample_rate = normalizeInteger(value, row.sample_rate);
+        break;
+      case "service.name":
+        row["service.name"] = expectNullableString(value);
+        break;
+      case "service.environment":
+        row["service.environment"] = expectNullableString(value);
+        break;
+      case "service.version":
+        row["service.version"] = expectNullableString(value);
+        break;
+      case "http.route":
+        row["http.route"] = expectNullableString(value);
+        break;
+      case "http.status_code":
+        row["http.status_code"] = normalizeNullableInteger(value);
+        break;
+      case "http.request.method":
+        row["http.request.method"] = expectNullableString(value);
+        break;
+      case "http.method":
+        if (row["http.request.method"] === null) {
+          row["http.request.method"] = expectNullableString(value);
+        }
+        break;
+      case "error":
+        row.error = normalizeNullableBoolean(value);
+        break;
+      case "exception.slug":
+        row["exception.slug"] = expectNullableString(value);
+        break;
+      case "exception.type":
+        if (row["exception.slug"] === null) {
+          row["exception.slug"] = expectNullableString(value);
+        }
+        break;
+      case "user.id":
+        row["user.id"] = expectNullableString(value);
+        break;
+      case "user.type":
+        row["user.type"] = expectNullableString(value);
+        break;
+      case "user.org.id":
+        row["user.org.id"] = expectNullableString(value);
+        break;
+      default:
+        row.attributes_overflow[key] = value;
+        break;
+    }
+  }
+
+  return row;
+}
+
+function createBaseRow(
+  span: OtlpSpan,
+  traceId: string,
+  spanId: string,
+  startTime: bigint | null,
+  durationMs: number | null
+): FlatEventRow {
   const row: FlatEventRow = {
     trace_id: traceId,
     span_id: spanId,
     parent_span_id: span.parentSpanId?.trim() ? span.parentSpanId : null,
     ts: startTime === null ? new Date(0).toISOString() : new Date(Number(startTime / 1_000_000n)).toISOString(),
     duration_ms: durationMs,
-    main:
-      typeof merged["main"] === "boolean"
-        ? merged["main"]
-        : span.kind === 1 && !(span.parentSpanId && span.parentSpanId.length > 0),
-    sample_rate: normalizeInteger(merged["sample_rate"], 1),
-    "service.name": expectNullableString(merged["service.name"]),
-    "service.environment": expectNullableString(merged["service.environment"]),
-    "service.version": expectNullableString(merged["service.version"]),
-    "http.route": expectNullableString(merged["http.route"]),
-    "http.status_code": normalizeNullableInteger(merged["http.status_code"]),
-    "http.request.method": expectNullableString(
-      merged["http.request.method"] ?? merged["http.method"]
-    ),
-    error: normalizeNullableBoolean(merged["error"]),
-    "exception.slug": expectNullableString(
-      merged["exception.slug"] ?? merged["exception.type"]
-    ),
-    "user.id": expectNullableString(merged["user.id"]),
-    "user.type": expectNullableString(merged["user.type"]),
-    "user.org.id": expectNullableString(merged["user.org.id"])
+    main: span.kind === 1 && !(span.parentSpanId && span.parentSpanId.length > 0),
+    sample_rate: 1,
+    "service.name": null,
+    "service.environment": null,
+    "service.version": null,
+    "http.route": null,
+    "http.status_code": null,
+    "http.request.method": null,
+    error: null,
+    "exception.slug": null,
+    "user.id": null,
+    "user.type": null,
+    "user.org.id": null,
+    attributes_overflow: {},
+    promoted_attribute_hints: []
   };
-
-  for (const [key, value] of Object.entries(merged)) {
-    if (key in row) {
-      continue;
-    }
-
-    row[key] = typeof value === "string" ? value : JSON.stringify(value);
-  }
 
   return row;
 }
@@ -99,7 +163,7 @@ function extractAttributes(attributes: readonly OtlpKeyValue[]): DynamicEventAtt
   return result;
 }
 
-function normalizeAnyValue(value: OtlpAnyValue | undefined): EventPrimitive {
+function normalizeAnyValue(value: OtlpAnyValue | undefined): EventValue {
   if (!value) {
     return null;
   }
@@ -125,11 +189,11 @@ function normalizeAnyValue(value: OtlpAnyValue | undefined): EventPrimitive {
   }
 
   if (value.arrayValue?.values) {
-    return normalizeEventPrimitive(value.arrayValue.values.map(normalizeAnyValue));
+    return value.arrayValue.values.map(normalizeAnyValue);
   }
 
   if (value.kvlistValue?.values) {
-    const nested: Record<string, EventPrimitive> = {};
+    const nested: Record<string, EventValue> = {};
     for (const entry of value.kvlistValue.values) {
       if (!entry.key) {
         continue;
@@ -137,7 +201,7 @@ function normalizeAnyValue(value: OtlpAnyValue | undefined): EventPrimitive {
 
       nested[entry.key] = normalizeAnyValue(entry.value);
     }
-    return normalizeEventPrimitive(nested);
+    return nested;
   }
 
   return null;
@@ -159,20 +223,20 @@ function requireString(value: string | undefined, label: string): string {
   return value;
 }
 
-function expectNullableString(value: EventPrimitive | undefined): string | null {
+function expectNullableString(value: EventValue | undefined): string | null {
   if (typeof value === "undefined" || value === null) {
     return null;
   }
 
-  return typeof value === "string" ? value : String(value);
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-function normalizeInteger(value: EventPrimitive | undefined, fallback: number): number {
+function normalizeInteger(value: EventValue | undefined, fallback: number): number {
   const normalized = normalizeNullableInteger(value);
   return normalized ?? fallback;
 }
 
-function normalizeNullableInteger(value: EventPrimitive | undefined): number | null {
+function normalizeNullableInteger(value: EventValue | undefined): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.trunc(value);
   }
@@ -185,7 +249,7 @@ function normalizeNullableInteger(value: EventPrimitive | undefined): number | n
   return null;
 }
 
-function normalizeNullableBoolean(value: EventPrimitive | undefined): boolean | null {
+function normalizeNullableBoolean(value: EventValue | undefined): boolean | null {
   if (typeof value === "boolean") {
     return value;
   }

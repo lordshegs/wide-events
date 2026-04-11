@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-node";
-import { WideEvents } from "./index.js";
+import { WideEvents } from "./index";
 import {
   getRuntimeRegistrySnapshotForTests,
   resetNodeRuntimeRegistryForTests
-} from "./runtime-registry.js";
+} from "./runtime-registry";
 
 describe("node WideEvents", () => {
   afterEach(async () => {
@@ -74,6 +74,81 @@ describe("node WideEvents", () => {
     await wideEvents.forceFlush();
 
     expect(exporter.getFinishedSpans()).toHaveLength(0);
+    await wideEvents.shutdown();
+  });
+
+  it("adds internal promotion hint attributes to the exported span", async () => {
+    const exporter = new InMemorySpanExporter();
+    const wideEvents = new WideEvents({
+      serviceName: "payments",
+      environment: "test",
+      collectorUrl: "http://collector.test",
+      traceExporter: exporter
+    });
+
+    const middleware = wideEvents.middleware();
+    await new Promise<void>((resolve) => {
+      const listeners = new Map<string, () => void>();
+      const response = {
+        statusCode: 204,
+        once(event: "finish" | "close" | "error", listener: () => void) {
+          listeners.set(event, listener);
+          return this;
+        }
+      };
+
+      middleware(
+        {
+          method: "GET",
+          url: "/checkout",
+          headers: {}
+        },
+        response,
+        () => {
+          wideEvents.annotate(
+            {
+              "custom.value": "alpha"
+            },
+            { promote: ["custom.value"] }
+          );
+          listeners.get("finish")?.();
+          resolve();
+        }
+      );
+    });
+
+    await wideEvents.forceFlush();
+
+    const span = exporter.getFinishedSpans()[0];
+    expect(span?.attributes["custom.value"]).toBe("alpha");
+    expect(span?.attributes["wide_events.promote.custom.value"]).toBe(true);
+
+    await wideEvents.shutdown();
+  });
+
+  it("throws for missing or baseline promotion keys", async () => {
+    const exporter = new InMemorySpanExporter();
+    const wideEvents = new WideEvents({
+      serviceName: "payments",
+      environment: "test",
+      collectorUrl: "http://collector.test",
+      traceExporter: exporter
+    });
+
+    expect(() => {
+      wideEvents.annotate(
+        { "custom.value": "alpha" },
+        { promote: ["custom.missing" as "custom.value"] }
+      );
+    }).toThrow(/promote key "custom.missing" is missing/);
+
+    expect(() => {
+      wideEvents.annotate(
+        { "user.id": "u_123" },
+        { promote: ["user.id"] }
+      );
+    }).toThrow(/cannot promote baseline column "user.id"/);
+
     await wideEvents.shutdown();
   });
 

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import { flattenTraceRequest } from "../otlp/flatten.js";
-import { otlpExportTraceServiceRequestSchema } from "../otlp/types.js";
-import type { CollectorDependencies } from "../server.js";
+import { flattenTraceRequest } from "../otlp/flatten";
+import { otlpExportTraceServiceRequestSchema } from "../otlp/types";
+import type { CollectorDependencies } from "../server";
 
 export function registerTraceRoutes(
   app: FastifyInstance,

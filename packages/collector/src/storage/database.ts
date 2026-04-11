@@ -1,5 +1,10 @@
 import { DuckDBInstance, type DuckDBConnection, type DuckDBValue } from "@duckdb/node-api";
-import { BASE_TABLE_SQL, type QueryRow } from "@wide-events/internal";
+import {
+  ATTRIBUTE_CATALOG_SQL,
+  BASE_TABLE_SQL,
+  type EventValue,
+  type QueryRow
+} from "@wide-events/internal";
 
 export class DuckDbDatabase {
   private constructor(
@@ -12,6 +17,10 @@ export class DuckDbDatabase {
     const writer = await instance.connect();
     const database = new DuckDbDatabase(instance, writer);
     await database.writer.run(BASE_TABLE_SQL);
+    await database.writer.run(ATTRIBUTE_CATALOG_SQL);
+    await database.writer.run(
+      "ALTER TABLE events ADD COLUMN IF NOT EXISTS attributes_overflow MAP(VARCHAR, JSON)"
+    );
     return database;
   }
 
@@ -56,7 +65,7 @@ function normalizeRows(rows: Record<string, unknown>[]): QueryRow[] {
   });
 }
 
-function normalizeResultValue(value: unknown): string | number | boolean | null {
+function normalizeResultValue(value: unknown): EventValue {
   if (
     value === null ||
     typeof value === "string" ||
@@ -73,6 +82,26 @@ function normalizeResultValue(value: unknown): string | number | boolean | null 
 
   if (value instanceof Date) {
     return value.toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    if (isDuckDbMapEntryArray(value)) {
+      const record: Record<string, EventValue> = {};
+      for (const entry of value) {
+        record[entry.key] = normalizeJsonLiteral(entry.value);
+      }
+      return record;
+    }
+
+    return value.map((entry) => normalizeResultValue(entry));
+  }
+
+  if (typeof value === "object") {
+    const record: Record<string, EventValue> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      record[key] = normalizeResultValue(entry);
+    }
+    return record;
   }
 
   return JSON.stringify(value);
@@ -100,4 +129,29 @@ function toDuckDbValues(values: readonly unknown[]): DuckDBValue[] {
 
     throw new Error(`Unsupported DuckDB parameter type: ${typeof value}`);
   });
+}
+
+function isDuckDbMapEntryArray(
+  value: readonly unknown[]
+): value is Array<{ key: string; value: unknown }> {
+  return value.every(
+    (entry) =>
+      typeof entry === "object" &&
+      entry !== null &&
+      "key" in entry &&
+      typeof entry["key"] === "string" &&
+      "value" in entry
+  );
+}
+
+function normalizeJsonLiteral(value: unknown): EventValue {
+  if (typeof value !== "string") {
+    return normalizeResultValue(value);
+  }
+
+  try {
+    return normalizeResultValue(JSON.parse(value));
+  } catch {
+    return value;
+  }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flattenTraceRequest } from "./flatten.js";
+import { flattenTraceRequest } from "./flatten";
 
 describe("flattenTraceRequest", () => {
   it("flattens spans and preserves baseline and dynamic attributes", () => {
@@ -36,8 +36,38 @@ describe("flattenTraceRequest", () => {
     expect(rows[0]?.main).toBe(true);
     expect(rows[0]?.["service.name"]).toBe("api");
     expect(rows[0]?.["http.route"]).toBe("/health");
-    expect(rows[0]?.["custom.value"]).toBe("42");
+    expect(rows[0]?.attributes_overflow["custom.value"]).toBe(42);
+    expect(rows[0]?.promoted_attribute_hints).toEqual([]);
     expect(rows[0]?.duration_ms).toBe(1_000);
+  });
+
+  it("strips internal promotion hints from overflow and records them separately", () => {
+    const rows = flattenTraceRequest({
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: "trace-1",
+                  spanId: "span-1",
+                  attributes: [
+                    { key: "custom.value", value: { stringValue: "alpha" } },
+                    {
+                      key: "wide_events.promote.custom.value",
+                      value: { boolValue: true }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(rows[0]?.attributes_overflow).toEqual({ "custom.value": "alpha" });
+    expect(rows[0]?.promoted_attribute_hints).toEqual(["custom.value"]);
   });
 
   it("only infers main=true for server root spans when the attribute is missing", () => {

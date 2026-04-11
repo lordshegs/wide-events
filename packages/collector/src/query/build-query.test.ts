@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertReadOnlySql, compileStructuredQuery } from "./build-query.js";
+import { assertReadOnlySql, compileStructuredQuery } from "./build-query";
 
 describe("compileStructuredQuery", () => {
   it("defaults structured queries to main=true scope", () => {
@@ -54,6 +54,23 @@ describe("compileStructuredQuery", () => {
         filters: [{ field: "main", op: "eq", value: true }]
       })
     ).toThrow(/scope "main"/);
+  });
+
+  it("preserves quoting for sanitized aliases, group by, order by, and filters", () => {
+    const compiled = compileStructuredQuery({
+      select: [{ fn: "MAX", field: "duration_ms", as: "duration.max" }],
+      filters: [{ field: "service.name", op: "eq", value: "api" }],
+      groupBy: ["http.route"],
+      orderBy: { field: "duration.max", dir: "asc" },
+      scope: "all"
+    });
+
+    expect(compiled.sql).toContain('MAX("duration_ms") AS "duration.max"');
+    expect(compiled.sql).toContain('SELECT "http.route", MAX("duration_ms") AS "duration.max"');
+    expect(compiled.sql).toContain('WHERE "service.name" = ?');
+    expect(compiled.sql).toContain('GROUP BY "http.route"');
+    expect(compiled.sql).toContain('ORDER BY "duration.max" ASC');
+    expect(compiled.params).toEqual(["api"]);
   });
 });
 

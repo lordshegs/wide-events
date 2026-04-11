@@ -1,7 +1,6 @@
 import { SpanKind, context, trace } from "@opentelemetry/api";
-import { MAIN_SPAN_KEY, type NodeWideEventsRuntime } from "./runtime.js";
-import { normalizeAttributes, type AnnotationAttributes } from "../shared/attributes.js";
-import { isSpanLike, setSpanAttributes } from "./span.js";
+import { MAIN_SPAN_KEY, type NodeWideEventsRuntime } from "./runtime";
+import { isSpanLike, setSpanAttributes } from "./span";
 
 interface HeaderCarrier {
   headers?: Record<string, string | undefined>;
@@ -61,23 +60,24 @@ function annotateLambdaContext(
   runtime: NodeWideEventsRuntime,
   invocationContext: Record<string, unknown>
 ): void {
-  const attributes: AnnotationAttributes = {
+  const attributes = {
     "lambda.request_id":
       typeof invocationContext["awsRequestId"] === "string"
         ? invocationContext["awsRequestId"]
-        : undefined,
+        : null,
     "lambda.function_name":
       typeof invocationContext["functionName"] === "string"
         ? invocationContext["functionName"]
-        : undefined,
+        : null,
     "lambda.function_arn":
       typeof invocationContext["invokedFunctionArn"] === "string"
         ? invocationContext["invokedFunctionArn"]
-        : undefined,
+        : null,
     "lambda.memory_mb":
       typeof invocationContext["memoryLimitInMB"] === "string"
         ? Number.parseInt(invocationContext["memoryLimitInMB"], 10)
-        : undefined
+        : null,
+    "service.name": runtime.options.serviceName
   };
 
   const span = context.active().getValue(MAIN_SPAN_KEY);
@@ -85,8 +85,5 @@ function annotateLambdaContext(
     return;
   }
 
-  setSpanAttributes(span, {
-    ...normalizeAttributes(attributes),
-    "service.name": runtime.options.serviceName
-  });
+  setSpanAttributes(span, attributes);
 }

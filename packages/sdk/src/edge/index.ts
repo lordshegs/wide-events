@@ -1,12 +1,18 @@
-import { normalizeAttributes, toOtlpAttributes, type AnnotationAttributes } from "../shared/attributes.js";
-import { postJson } from "../shared/http.js";
-import { createSpanId, createTraceId } from "../shared/ids.js";
+import type { EventPrimitive } from "@wide-events/internal";
+import {
+  buildAnnotatedAttributes,
+  toOtlpAttributes,
+  type AnnotateOptions,
+  type AnnotationAttributes
+} from "../shared/attributes";
+import { postJson } from "../shared/http";
+import { createSpanId, createTraceId } from "../shared/ids";
 import {
   edgeOptionsSchema,
   type EdgeWideEventsOptions,
   type ResolvedEdgeWideEventsOptions
-} from "../shared/options.js";
-import { formatTraceparent, parseTraceparent } from "../shared/traceparent.js";
+} from "../shared/options";
+import { formatTraceparent, parseTraceparent } from "../shared/traceparent";
 
 export class WideEvents {
   readonly options: ResolvedEdgeWideEventsOptions;
@@ -16,7 +22,7 @@ export class WideEvents {
   private traceId: string;
   private readonly startedAt = Date.now();
   private parentSpanId: string | null = null;
-  private readonly attributes = new Map<string, string | number | boolean | null>();
+  private readonly attributes = new Map<string, EventPrimitive>();
 
   constructor(options: EdgeWideEventsOptions) {
     this.options = edgeOptionsSchema.parse(options);
@@ -30,13 +36,23 @@ export class WideEvents {
     this.attributes.set("service.environment", this.options.environment);
   }
 
-  annotate(attributes: AnnotationAttributes): void {
+  annotate<T extends AnnotationAttributes>(
+    attributes: T,
+    options?: AnnotateOptions<T>
+  ): void {
     if (this.options.disabled) {
       return;
     }
 
-    for (const [key, value] of Object.entries(normalizeAttributes(attributes))) {
-      this.attributes.set(key, value);
+    for (const [key, value] of Object.entries(buildAnnotatedAttributes(attributes, options))) {
+      if (
+        value === null ||
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        this.attributes.set(key, value);
+      }
     }
   }
 
@@ -99,4 +115,4 @@ export class WideEvents {
   }
 }
 
-export type { EdgeWideEventsOptions } from "../shared/options.js";
+export type { EdgeWideEventsOptions } from "../shared/options";
