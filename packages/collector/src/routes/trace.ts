@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { traceParamsSchema } from "@wide-events/internal";
-import type { CollectorDependencies } from "../server.js";
+import type { CollectorDependencies } from "../server";
 
 export function registerTraceQueryRoutes(
   app: FastifyInstance,

@@ -7,7 +7,7 @@ import {
   type QuerySelectItem,
   type StructuredQuery
 } from "@wide-events/internal";
-import { BadRequestError } from "../errors.js";
+import { BadRequestError } from "../errors";
 
 export interface CompiledQuery {
   sql: string;

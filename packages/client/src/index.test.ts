@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { WideEventsClient } from "./index.js";
+import { WideEventsClient } from "./index";
 
 describe("WideEventsClient", () => {
   it("posts structured queries and parses the response", async () => {

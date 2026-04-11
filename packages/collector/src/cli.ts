@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createCollectorServer } from "./server.js";
+import { createCollectorServer } from "./server";
 
 const server = await createCollectorServer();
 

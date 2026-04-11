@@ -2,8 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DuckDbDatabase } from "./database.js";
-import { SchemaRegistry } from "./schema-registry.js";
+import { DuckDbDatabase } from "./database";
+import { SchemaRegistry } from "./schema-registry";
 
 describe("SchemaRegistry", () => {
   let database: DuckDbDatabase;

@@ -1,6 +1,6 @@
 import type { Span } from "@opentelemetry/api";
 import type { DynamicEventAttributes } from "@wide-events/internal";
-import { toSpanAttributes } from "../shared/attributes.js";
+import { toSpanAttributes } from "../shared/attributes";
 
 export function isSpanLike(value: unknown): value is Span {
   return (

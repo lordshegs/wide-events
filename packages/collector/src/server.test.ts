@@ -1,9 +1,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { CollectorConfig } from "./config.js";
+import type { CollectorConfig } from "./config";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createCollectorServer } from "./server.js";
+import { createCollectorServer } from "./server";
 
 describe("collector server", () => {
   let workspaceDir = "";

@@ -3,13 +3,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { DynamicEventAttributes, FlatEventRow } from "@wide-events/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { CollectorConfig } from "../config.js";
-import { QueueLimitExceededError } from "../errors.js";
-import type { CollectorLogger } from "../logger.js";
-import { AttributeCatalog } from "./attribute-catalog.js";
-import { DuckDbDatabase } from "./database.js";
-import { SchemaRegistry } from "./schema-registry.js";
-import { CollectorStore } from "./store.js";
+import type { CollectorConfig } from "../config";
+import { QueueLimitExceededError } from "../errors";
+import type { CollectorLogger } from "../logger";
+import { AttributeCatalog } from "./attribute-catalog";
+import { DuckDbDatabase } from "./database";
+import { SchemaRegistry } from "./schema-registry";
+import { CollectorStore } from "./store";
 
 interface LoggedEvent {
   bindings: Record<string, unknown>;

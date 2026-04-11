@@ -1,7 +1,7 @@
 import { context, trace, SpanKind } from "@opentelemetry/api";
 import type { DynamicEventAttributes } from "@wide-events/internal";
-import { MAIN_SPAN_KEY, type NodeWideEventsRuntime } from "./runtime.js";
-import { isSpanLike, setSpanAttributes } from "./span.js";
+import { MAIN_SPAN_KEY, type NodeWideEventsRuntime } from "./runtime";
+import { isSpanLike, setSpanAttributes } from "./span";
 
 export interface MiddlewareRequest {
   method?: string | undefined;

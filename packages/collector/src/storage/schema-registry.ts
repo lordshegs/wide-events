@@ -3,7 +3,7 @@ import {
   BASELINE_COLUMN_TYPES,
   quoteIdentifier
 } from "@wide-events/internal";
-import type { DuckDbDatabase } from "./database.js";
+import type { DuckDbDatabase } from "./database";
 
 export class SchemaRegistry {
   private readonly columns = new Map<string, string>();

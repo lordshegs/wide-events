@@ -1,6 +1,6 @@
 import { SpanKind, context, trace } from "@opentelemetry/api";
-import { MAIN_SPAN_KEY, type NodeWideEventsRuntime } from "./runtime.js";
-import { isSpanLike, setSpanAttributes } from "./span.js";
+import { MAIN_SPAN_KEY, type NodeWideEventsRuntime } from "./runtime";
+import { isSpanLike, setSpanAttributes } from "./span";
 
 interface HeaderCarrier {
   headers?: Record<string, string | undefined>;

@@ -9,8 +9,8 @@ import {
   type InferredAttributeType,
   type PromotionStorageState
 } from "@wide-events/internal";
-import type { DuckDbDatabase } from "./database.js";
-import type { SchemaRegistry } from "./schema-registry.js";
+import type { DuckDbDatabase } from "./database";
+import type { SchemaRegistry } from "./schema-registry";
 
 interface PromotionCandidate extends AttributeCatalogEntry {
   nonNullRatio: number;

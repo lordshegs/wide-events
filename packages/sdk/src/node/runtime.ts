@@ -15,7 +15,7 @@ import {
 import {
   resolveNodeOptions,
   type ResolvedWideEventsOptions
-} from "../shared/options.js";
+} from "../shared/options";
 
 export const MAIN_SPAN_KEY = createContextKey("wide-events.main-span");
 

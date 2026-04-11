@@ -1,5 +1,5 @@
-import { BASELINE_COLUMN_NAMES } from "./schema.js";
-import type { EventValue } from "./types.js";
+import { BASELINE_COLUMN_NAMES } from "./schema";
+import type { EventValue } from "./types";
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9._-]+$/u;
 const DURATION_PATTERN = /^(\d+)(ms|s|m|h|d)$/u;

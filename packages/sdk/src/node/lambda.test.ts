@@ -7,8 +7,8 @@ import type {
 } from "aws-lambda";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-node";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WideEvents } from "./index.js";
-import { resetNodeRuntimeRegistryForTests } from "./runtime-registry.js";
+import { WideEvents } from "./index";
+import { resetNodeRuntimeRegistryForTests } from "./runtime-registry";
 
 describe("wrapLambdaHandler", () => {
   afterEach(async () => {

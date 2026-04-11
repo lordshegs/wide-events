@@ -9,16 +9,16 @@ import type {
 } from "aws-lambda";
 import type { ExecutionContext } from "@cloudflare/workers-types";
 import { afterEach, describe, expect, it } from "vitest";
-import { createLambdaExample } from "../examples/lambda/src/handler.js";
+import { createLambdaExample } from "../examples/lambda/src/handler";
 import {
   startNodeServiceExample,
   type StartedNodeServiceExample,
-} from "../examples/node-service/src/server.js";
-import { handleWorkerRequest } from "../examples/worker/src/worker.js";
-import { WideEventsClient } from "../packages/client/src/index.js";
-import type { CollectorConfig } from "../packages/collector/src/config.js";
-import { createCollectorServer } from "../packages/collector/src/server.js";
-import { resetNodeRuntimeRegistryForTests } from "../packages/sdk/src/node/runtime-registry.js";
+} from "../examples/node-service/src/server";
+import { handleWorkerRequest } from "../examples/worker/src/worker";
+import { WideEventsClient } from "../packages/client/src/index";
+import type { CollectorConfig } from "../packages/collector/src/config";
+import { createCollectorServer } from "../packages/collector/src/server";
+import { resetNodeRuntimeRegistryForTests } from "../packages/sdk/src/node/runtime-registry";
 
 describe("wide-events live HTTP", () => {
   let workspaceDir = "";

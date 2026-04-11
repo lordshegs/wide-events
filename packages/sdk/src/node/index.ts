@@ -2,16 +2,16 @@ import {
   buildAnnotatedAttributes,
   type AnnotateOptions,
   type AnnotationAttributes
-} from "../shared/attributes.js";
+} from "../shared/attributes";
 import {
   resolveNodeOptions,
   type ResolvedWideEventsOptions,
   type WideEventsOptions
-} from "../shared/options.js";
-import { wrapLambdaHandler } from "./lambda.js";
-import { annotateCurrentSpan, createMiddleware } from "./middleware.js";
-import { acquireNodeRuntime } from "./runtime-registry.js";
-import type { NodeWideEventsRuntime } from "./runtime.js";
+} from "../shared/options";
+import { wrapLambdaHandler } from "./lambda";
+import { annotateCurrentSpan, createMiddleware } from "./middleware";
+import { acquireNodeRuntime } from "./runtime-registry";
+import type { NodeWideEventsRuntime } from "./runtime";
 
 const noopMiddleware = () => (_request: unknown, _response: unknown, next: () => void) => {
   next();
@@ -78,4 +78,4 @@ export class WideEvents {
   }
 }
 
-export type { WideEventsOptions } from "../shared/options.js";
+export type { WideEventsOptions } from "../shared/options";

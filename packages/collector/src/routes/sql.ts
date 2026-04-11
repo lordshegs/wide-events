@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { sqlRequestSchema } from "@wide-events/internal";
-import { BadRequestError } from "../errors.js";
-import { assertReadOnlySql } from "../query/build-query.js";
-import type { CollectorDependencies } from "../server.js";
+import { BadRequestError } from "../errors";
+import { assertReadOnlySql } from "../query/build-query";
+import type { CollectorDependencies } from "../server";
 
 export function registerSqlRoutes(
   app: FastifyInstance,

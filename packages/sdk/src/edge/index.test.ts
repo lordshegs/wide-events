@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { WideEvents } from "./index.js";
+import { WideEvents } from "./index";
 
 describe("edge WideEvents", () => {
   it("does not export when disabled", async () => {

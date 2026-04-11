@@ -4,15 +4,15 @@ import {
   toOtlpAttributes,
   type AnnotateOptions,
   type AnnotationAttributes
-} from "../shared/attributes.js";
-import { postJson } from "../shared/http.js";
-import { createSpanId, createTraceId } from "../shared/ids.js";
+} from "../shared/attributes";
+import { postJson } from "../shared/http";
+import { createSpanId, createTraceId } from "../shared/ids";
 import {
   edgeOptionsSchema,
   type EdgeWideEventsOptions,
   type ResolvedEdgeWideEventsOptions
-} from "../shared/options.js";
-import { formatTraceparent, parseTraceparent } from "../shared/traceparent.js";
+} from "../shared/options";
+import { formatTraceparent, parseTraceparent } from "../shared/traceparent";
 
 export class WideEvents {
   readonly options: ResolvedEdgeWideEventsOptions;
@@ -115,4 +115,4 @@ export class WideEvents {
   }
 }
 
-export type { EdgeWideEventsOptions } from "../shared/options.js";
+export type { EdgeWideEventsOptions } from "../shared/options";

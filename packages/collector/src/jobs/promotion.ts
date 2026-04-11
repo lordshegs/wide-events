@@ -1,5 +1,5 @@
-import type { CollectorConfig } from "../config.js";
-import type { CollectorStore } from "../storage/store.js";
+import type { CollectorConfig } from "../config";
+import type { CollectorStore } from "../storage/store";
 
 export class PromotionJob {
   private timer: NodeJS.Timeout | undefined;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertReadOnlySql, compileStructuredQuery } from "./build-query.js";
+import { assertReadOnlySql, compileStructuredQuery } from "./build-query";
 
 describe("compileStructuredQuery", () => {
   it("defaults structured queries to main=true scope", () => {

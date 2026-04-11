@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-node";
-import { WideEvents } from "./index.js";
+import { WideEvents } from "./index";
 import {
   getRuntimeRegistrySnapshotForTests,
   resetNodeRuntimeRegistryForTests
-} from "./runtime-registry.js";
+} from "./runtime-registry";
 
 describe("node WideEvents", () => {
   afterEach(async () => {

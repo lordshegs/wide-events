@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flattenTraceRequest } from "./flatten.js";
+import { flattenTraceRequest } from "./flatten";
 
 describe("flattenTraceRequest", () => {
   it("flattens spans and preserves baseline and dynamic attributes", () => {

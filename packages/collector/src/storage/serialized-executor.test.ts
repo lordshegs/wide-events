@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SerializedExecutor } from "./serialized-executor.js";
+import { SerializedExecutor } from "./serialized-executor";
 
 describe("SerializedExecutor", () => {
   it("runs queued tasks sequentially", async () => {

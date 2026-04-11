@@ -10,7 +10,7 @@ import type {
   OtlpExportTraceServiceRequest,
   OtlpKeyValue,
   OtlpSpan
-} from "./types.js";
+} from "./types";
 
 export function flattenTraceRequest(
   request: OtlpExportTraceServiceRequest

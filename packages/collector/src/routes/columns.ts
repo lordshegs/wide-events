@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { CollectorDependencies } from "../server.js";
+import type { CollectorDependencies } from "../server";
 
 export function registerColumnRoutes(
   app: FastifyInstance,
