@@ -1,0 +1,14 @@
+.cursor
+.qodo
+node_modules
+**/node_modules
+wide-events-*.md
+**/tsconfig.tsbuildinfo
+dist
+**/dist
+wide-events-*.tgz
+.dockerignore
+docs
+AGENTS.md
+docker-collector.yml
+tsconfig.eslint.tsbuildinfo
