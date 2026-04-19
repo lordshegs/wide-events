@@ -68,7 +68,8 @@ function createRuntime(span: FakeSpan, shouldSample = true): NodeWideEventsRunti
         http: true,
         postgres: true,
         redis: true,
-        fetch: true
+        fetch: true,
+        aws: false
       }
     },
     tracer: {

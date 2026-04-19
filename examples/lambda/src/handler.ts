@@ -1,7 +1,7 @@
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
-  Context
+  Context,
 } from "aws-lambda";
 import { WideEvents } from "@wide-events/sdk";
 
@@ -11,7 +11,9 @@ export interface LambdaExampleOptions {
   serviceName?: string;
 }
 
-function resolveOptions(options: LambdaExampleOptions): Required<LambdaExampleOptions> {
+function resolveOptions(
+  options: LambdaExampleOptions,
+): Required<LambdaExampleOptions> {
   return {
     collectorUrl:
       options.collectorUrl ??
@@ -24,14 +26,14 @@ function resolveOptions(options: LambdaExampleOptions): Required<LambdaExampleOp
     serviceName:
       options.serviceName ??
       process.env["WIDE_EVENTS_SERVICE_NAME"] ??
-      "example-lambda"
+      "example-lambda",
   };
 }
 
 export function createLambdaExample(options: LambdaExampleOptions = {}): {
   handler: (
     event: APIGatewayProxyEventV2,
-    context: Context
+    context: Context,
   ) => Promise<APIGatewayProxyStructuredResultV2>;
   wideEvents: WideEvents;
 } {
@@ -39,7 +41,7 @@ export function createLambdaExample(options: LambdaExampleOptions = {}): {
   const wideEvents = new WideEvents({
     serviceName: resolved.serviceName,
     environment: resolved.environment,
-    collectorUrl: resolved.collectorUrl
+    collectorUrl: resolved.collectorUrl,
   });
 
   const handler = wideEvents.wrapHandler<
@@ -50,21 +52,21 @@ export function createLambdaExample(options: LambdaExampleOptions = {}): {
     wideEvents.annotate({
       main: true,
       "http.request.method": event.requestContext.http.method,
-      "http.route": event.rawPath || "/lambda"
+      "http.route": event.rawPath || "/lambda",
     });
 
     return {
       statusCode: 200,
       body: JSON.stringify({ ok: true }),
       headers: {
-        "content-type": "application/json"
-      }
+        "content-type": "application/json",
+      },
     };
   });
 
   return {
     handler,
-    wideEvents
+    wideEvents,
   };
 }
 
@@ -72,7 +74,7 @@ let defaultExample: ReturnType<typeof createLambdaExample> | null = null;
 
 export async function handler(
   event: APIGatewayProxyEventV2,
-  context: Context
+  context: Context,
 ): Promise<APIGatewayProxyStructuredResultV2> {
   defaultExample ??= createLambdaExample();
   return await defaultExample.handler(event, context);

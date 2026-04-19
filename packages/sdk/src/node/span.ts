@@ -1,4 +1,4 @@
-import type { Span } from "@opentelemetry/api";
+import { trace, type Span } from "@opentelemetry/api";
 import type { DynamicEventAttributes } from "@wide-events/internal";
 import { toSpanAttributes } from "../shared/attributes";
 
@@ -16,4 +16,13 @@ export function setSpanAttributes(
   attributes: DynamicEventAttributes
 ): void {
   span.setAttributes(toSpanAttributes(attributes));
+}
+
+export function annotateActiveSpan(attributes: DynamicEventAttributes): void {
+  const span = trace.getActiveSpan();
+  if (!span) {
+    return;
+  }
+
+  setSpanAttributes(span, attributes);
 }

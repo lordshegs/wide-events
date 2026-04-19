@@ -47,6 +47,7 @@
     "@opentelemetry/context-async-hooks": "2.6.0",
     "@opentelemetry/exporter-trace-otlp-http": "0.213.0",
     "@opentelemetry/instrumentation": "0.213.0",
+    "@opentelemetry/instrumentation-aws-sdk": "0.68.0",
     "@opentelemetry/resources": "2.6.0",
     "@opentelemetry/sdk-trace-node": "2.6.0",
     "@wide-events/internal": "workspace:*",

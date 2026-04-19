@@ -51,7 +51,7 @@ WIDE_EVENTS_DUCKDB_PATH=./wide-events.db npx wide-events-collector
 
 ### Run the collector with Docker
 
-The Docker workflow publishes to `docker.io/oluwasegun7/wide-events-collector`. Replace `<namespace>` with the Docker Hub namespace used for your deployment.
+The Docker workflow publishes to `docker.io/oluwasegun7/wide-events-collector`.
 
 ```bash
 docker pull oluwasegun7/wide-events-collector:0.1.0
@@ -85,6 +85,8 @@ const wideEvents = new WideEvents({
 
 `annotate()` writes onto the active service-root span. Outside an active request or invocation it is a no-op.
 
+Node services can opt in to AWS SDK tracing with `autoInstrument.aws: true`. Lambda enables that AWS SDK instrumentation by default when `AWS_LAMBDA_FUNCTION_NAME` is present unless you explicitly disable it.
+
 ### Edge and Workers
 
 ```ts
@@ -117,6 +119,8 @@ const result = await client.query({
 ```
 
 Structured queries default to `scope: "main"`, which means the collector injects `main = true` unless you explicitly set `scope: "all"`. Structured queries target baseline and promoted columns; overflow-only keys remain available through `/sql` and trace inspection.
+
+When you analyze DynamoDB or other AWS SDK spans, use `scope: "all"` because those are child spans rather than `main=true` root rows. A common pattern is labeling the active AWS span with an app-level attribute such as `dynamodb.query_name = "listCustomerOrders"`.
 
 ## Collector Configuration
 

@@ -1,3 +1,4 @@
+import { context, trace, type Attributes, type HrTime, type Link, type Span, type SpanContext, type SpanStatus } from "@opentelemetry/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-node";
 import { WideEvents } from "./index";
@@ -9,6 +10,7 @@ import {
 describe("node WideEvents", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
+    delete process.env["AWS_LAMBDA_FUNCTION_NAME"];
     await resetNodeRuntimeRegistryForTests();
   });
 
@@ -70,6 +72,49 @@ describe("node WideEvents", () => {
 
     wideEvents.annotate({
       "user.id": "user-123"
+    });
+    await wideEvents.forceFlush();
+
+    expect(exporter.getFinishedSpans()).toHaveLength(0);
+    await wideEvents.shutdown();
+  });
+
+  it("annotates the active child span without changing the root span", async () => {
+    const activeSpan = new FakeSpan();
+    const wideEvents = new WideEvents({
+      serviceName: "payments",
+      environment: "test",
+      collectorUrl: "http://collector.test",
+      traceExporter: new InMemorySpanExporter()
+    });
+
+    context.with(
+      trace.setSpan(context.active(), activeSpan),
+      () => {
+        wideEvents.annotateActiveSpan({
+          "dynamodb.query_name": "listCustomerOrders"
+        });
+      }
+    );
+
+    expect(activeSpan.attributes["dynamodb.query_name"]).toBe(
+      "listCustomerOrders"
+    );
+
+    await wideEvents.shutdown();
+  });
+
+  it("does nothing when annotateActiveSpan is called outside an active span", async () => {
+    const exporter = new InMemorySpanExporter();
+    const wideEvents = new WideEvents({
+      serviceName: "payments",
+      environment: "test",
+      collectorUrl: "http://collector.test",
+      traceExporter: exporter
+    });
+
+    wideEvents.annotateActiveSpan({
+      "dynamodb.query_name": "listCustomerOrders"
     });
     await wideEvents.forceFlush();
 
@@ -153,6 +198,7 @@ describe("node WideEvents", () => {
   });
 
   it("skips runtime registration and export when disabled", async () => {
+    process.env["AWS_LAMBDA_FUNCTION_NAME"] = "example-handler";
     const exporter = new InMemorySpanExporter();
     const wideEvents = new WideEvents({
       serviceName: "payments",
@@ -166,6 +212,7 @@ describe("node WideEvents", () => {
     expect(getRuntimeRegistrySnapshotForTests()).toBeNull();
     expect(exporter.getFinishedSpans()).toHaveLength(0);
     await wideEvents.shutdown();
+    delete process.env["AWS_LAMBDA_FUNCTION_NAME"];
   });
 
   it("skips unsampled requests when sampleRate is greater than one", async () => {
@@ -253,3 +300,57 @@ describe("node WideEvents", () => {
     await first.shutdown();
   });
 });
+
+class FakeSpan implements Span {
+  readonly attributes: Attributes = {};
+
+  addEvent(
+    _name: string,
+    _attributesOrStartTime?: Attributes | HrTime,
+    _startTime?: HrTime
+  ): this {
+    return this;
+  }
+
+  addLink(_link: Link): this {
+    return this;
+  }
+
+  addLinks(_links: Link[]): this {
+    return this;
+  }
+
+  end(): void {}
+
+  isRecording(): boolean {
+    return true;
+  }
+
+  recordException(_exception: string | Error, _time?: HrTime): void {}
+
+  setAttribute(key: string, value: string | number | boolean): this {
+    this.attributes[key] = value;
+    return this;
+  }
+
+  setAttributes(attributes: Attributes): this {
+    Object.assign(this.attributes, attributes);
+    return this;
+  }
+
+  setStatus(_status: SpanStatus): this {
+    return this;
+  }
+
+  spanContext(): SpanContext {
+    return {
+      traceId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      spanId: "bbbbbbbbbbbbbbbb",
+      traceFlags: 1
+    };
+  }
+
+  updateName(_name: string): this {
+    return this;
+  }
+}
