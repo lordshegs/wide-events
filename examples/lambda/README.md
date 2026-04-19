@@ -17,6 +17,21 @@ Minimal AWS Lambda-style handler instrumented with `@wide-events/sdk`.
 
 The wrapped handler annotates the service-root span, adopts an inbound `traceparent` header when present, records thrown errors, and flushes before returning or rethrowing.
 
+Because Lambda sets `AWS_LAMBDA_FUNCTION_NAME`, `@wide-events/sdk` enables AWS SDK auto-instrumentation by default when `autoInstrument.aws` is omitted. That means DynamoDB and other AWS SDK v3 calls can produce child spans without extra Lambda-specific configuration.
+
+If you want to disable AWS SDK tracing in Lambda, construct the SDK with:
+
+```ts
+const wideEvents = new WideEvents({
+  serviceName: "example-lambda",
+  environment: "development",
+  collectorUrl: "http://localhost:4318",
+  autoInstrument: {
+    aws: false
+  }
+});
+```
+
 ## Typecheck
 
 ```bash

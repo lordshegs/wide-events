@@ -7,6 +7,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.1029.0",
+    "@aws-sdk/lib-dynamodb": "3.1029.0",
     "@wide-events/sdk": "workspace:*"
   }
 }

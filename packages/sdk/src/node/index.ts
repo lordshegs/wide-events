@@ -12,6 +12,7 @@ import { wrapLambdaHandler } from "./lambda";
 import { annotateCurrentSpan, createMiddleware } from "./middleware";
 import { acquireNodeRuntime } from "./runtime-registry";
 import type { NodeWideEventsRuntime } from "./runtime";
+import { annotateActiveSpan as annotateActiveOpenTelemetrySpan } from "./span";
 
 const noopMiddleware = () => (_request: unknown, _response: unknown, next: () => void) => {
   next();
@@ -50,6 +51,17 @@ export class WideEvents {
     }
 
     annotateCurrentSpan(buildAnnotatedAttributes(attributes, options));
+  }
+
+  annotateActiveSpan<T extends AnnotationAttributes>(
+    attributes: T,
+    options?: AnnotateOptions<T>
+  ): void {
+    if (this.options.disabled || !this.runtime) {
+      return;
+    }
+
+    annotateActiveOpenTelemetrySpan(buildAnnotatedAttributes(attributes, options));
   }
 
   async forceFlush(): Promise<void> {

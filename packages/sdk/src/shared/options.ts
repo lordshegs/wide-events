@@ -6,7 +6,8 @@ const autoInstrumentSchema = z
     http: z.boolean().default(true),
     postgres: z.boolean().default(true),
     redis: z.boolean().default(true),
-    fetch: z.boolean().default(true)
+    fetch: z.boolean().default(true),
+    aws: z.boolean().optional()
   })
   .default({
     http: true,
@@ -45,10 +46,26 @@ export type ResolvedEdgeWideEventsOptions = z.output<typeof edgeOptionsSchema>;
 
 export function resolveNodeOptions(options: WideEventsOptions): ResolvedWideEventsOptions {
   const parsed = nodeOptionsSchema.parse(options);
+  const autoInstrument = {
+    http: parsed.autoInstrument.http,
+    postgres: parsed.autoInstrument.postgres,
+    redis: parsed.autoInstrument.redis,
+    fetch: parsed.autoInstrument.fetch,
+    aws: parsed.autoInstrument.aws ?? isLambdaEnvironment()
+  };
+
   return options.traceExporter
     ? {
         ...parsed,
+        autoInstrument,
         traceExporter: options.traceExporter
       }
-    : parsed;
+    : {
+        ...parsed,
+        autoInstrument
+      };
+}
+
+function isLambdaEnvironment(): boolean {
+  return typeof process.env["AWS_LAMBDA_FUNCTION_NAME"] === "string";
 }

@@ -42,7 +42,10 @@ export function createNodeServiceExample(
   const wideEvents = new WideEvents({
     serviceName: resolved.serviceName,
     environment: resolved.environment,
-    collectorUrl: resolved.collectorUrl
+    collectorUrl: resolved.collectorUrl,
+    autoInstrument: {
+      aws: true
+    }
   });
   const middleware = wideEvents.middleware();
   const server = createServer((request, response) => {

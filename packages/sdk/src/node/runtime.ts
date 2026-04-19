@@ -1,6 +1,7 @@
 import { context, createContextKey, propagation } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { AwsInstrumentation } from "@opentelemetry/instrumentation-aws-sdk";
 import { registerInstrumentations } from "@opentelemetry/instrumentation";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
@@ -12,6 +13,7 @@ import {
   type SpanExporter,
   TraceIdRatioBasedSampler
 } from "@opentelemetry/sdk-trace-node";
+import type { Instrumentation } from "@opentelemetry/instrumentation";
 import {
   resolveNodeOptions,
   type ResolvedWideEventsOptions
@@ -50,28 +52,7 @@ export class NodeWideEventsRuntime {
 
     registerInstrumentations({
       tracerProvider: this.tracerProvider,
-      instrumentations: this.options.disabled
-        ? []
-        : [
-            getNodeAutoInstrumentations({
-              "@opentelemetry/instrumentation-http": {
-                enabled: this.options.autoInstrument.http,
-                disableIncomingRequestInstrumentation: true
-              },
-              "@opentelemetry/instrumentation-undici": {
-                enabled: this.options.autoInstrument.fetch
-              },
-              "@opentelemetry/instrumentation-pg": {
-                enabled: this.options.autoInstrument.postgres
-              },
-              "@opentelemetry/instrumentation-ioredis": {
-                enabled: this.options.autoInstrument.redis
-              },
-              "@opentelemetry/instrumentation-redis": {
-                enabled: this.options.autoInstrument.redis
-              }
-            })
-          ]
+      instrumentations: createNodeInstrumentations(this.options)
     });
   }
 
@@ -111,4 +92,40 @@ export class NodeWideEventsRuntime {
       url: `${this.options.collectorUrl.replace(/\/$/u, "")}/v1/traces`
     });
   }
+}
+
+export function createNodeInstrumentations(
+  options: ResolvedWideEventsOptions
+): Instrumentation[] {
+  if (options.disabled) {
+    return [];
+  }
+
+  const instrumentations = getNodeAutoInstrumentations({
+    "@opentelemetry/instrumentation-http": {
+      enabled: options.autoInstrument.http,
+      disableIncomingRequestInstrumentation: true
+    },
+    "@opentelemetry/instrumentation-undici": {
+      enabled: options.autoInstrument.fetch
+    },
+    "@opentelemetry/instrumentation-pg": {
+      enabled: options.autoInstrument.postgres
+    },
+    "@opentelemetry/instrumentation-ioredis": {
+      enabled: options.autoInstrument.redis
+    },
+    "@opentelemetry/instrumentation-redis": {
+      enabled: options.autoInstrument.redis
+    },
+    "@opentelemetry/instrumentation-aws-sdk": {
+      enabled: false
+    }
+  });
+
+  if (options.autoInstrument.aws) {
+    return [...instrumentations, new AwsInstrumentation()];
+  }
+
+  return instrumentations;
 }

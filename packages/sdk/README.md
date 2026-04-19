@@ -34,6 +34,7 @@ const wideEvents = new WideEvents({
 | `autoInstrument.postgres` | `boolean` | `true` | Controls Postgres instrumentation. |
 | `autoInstrument.redis` | `boolean` | `true` | Controls Redis instrumentation. |
 | `autoInstrument.fetch` | `boolean` | `true` | Controls fetch instrumentation in Node. |
+| `autoInstrument.aws` | `boolean` | `false` in general Node, `true` in Lambda when omitted | Controls AWS SDK v3 instrumentation for services such as DynamoDB. Explicit config overrides the environment-aware default. |
 
 ### Methods
 
@@ -41,6 +42,7 @@ const wideEvents = new WideEvents({
 | --- | --- |
 | `middleware()` | Creates request middleware that establishes the service-root span and request context. |
 | `annotate(attributes, options?)` | Adds primitive attributes to the active service-root span. Outside an active context this is a no-op. |
+| `annotateActiveSpan(attributes, options?)` | Adds primitive attributes to the currently active span. Useful for labeling child spans such as AWS SDK spans. Outside an active span this is a no-op. |
 | `forceFlush()` | Flushes pending spans to the collector. |
 | `wrapHandler(handler)` | Wraps a Lambda-style handler and guarantees flush in `finally`. |
 | `shutdown()` | Releases the process-wide runtime when you are done with it. |
@@ -96,6 +98,8 @@ const server = createServer((request, response) => {
 
 The SDK treats the service-root span as the primary wide-event row. `annotate()` writes onto that span, not onto whichever child span happens to be active. The collector still stores all spans, but structured queries default to `main=true`.
 
+Use `annotateActiveSpan()` when you want to label a child span, for example an auto-instrumented DynamoDB query span with a stable application-level identifier such as `dynamodb.query_name`.
+
 Promotion hints are internal storage metadata. They are sent to the collector so it can create promoted columns eagerly, but they are not exposed as user-visible event attributes.
 
 ### Sampling
@@ -146,6 +150,71 @@ export const handler = wideEvents.wrapHandler<
 ```
 
 `wrapHandler()` creates a server span, adopts an upstream `traceparent` header when present, marks the invocation as `main=true`, records thrown errors, and flushes in `finally` before returning or rethrowing.
+
+When `AWS_LAMBDA_FUNCTION_NAME` is present and `autoInstrument.aws` is omitted, the Node SDK enables AWS SDK instrumentation by default. To turn it off explicitly in Lambda, pass:
+
+```ts
+const wideEvents = new WideEvents({
+  serviceName: "api-lambda",
+  environment: "production",
+  collectorUrl: "http://localhost:4318",
+  autoInstrument: {
+    aws: false
+  }
+});
+```
+
+## AWS SDK and DynamoDB spans
+
+Node runtimes can trace AWS SDK v3 clients, including DynamoDB. General Node services must opt in with `autoInstrument.aws: true`; Lambda enables it by default when the option is omitted.
+
+```ts
+const wideEvents = new WideEvents({
+  serviceName: "api",
+  environment: "production",
+  collectorUrl: "http://localhost:4318",
+  autoInstrument: {
+    aws: true
+  }
+});
+```
+
+The SDK keeps DynamoDB detail at the upstream metadata level. Spans include AWS and DynamoDB attributes emitted by `@opentelemetry/instrumentation-aws-sdk`, such as service, operation, region, table or index metadata, counts, and consumed capacity when the SDK returns them. It does not capture raw DynamoDB statements.
+
+### Naming housed query functions
+
+If a logical DynamoDB query lives in a dedicated function, label the active AWS span with a stable application-level name:
+
+```ts
+import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+
+async function listCustomerOrders(
+  wideEvents: WideEvents,
+  docClient: DynamoDBDocumentClient,
+  customerId: string,
+  monthPrefix: string
+) {
+  wideEvents.annotateActiveSpan({
+    "dynamodb.query_name": "listCustomerOrders"
+  });
+
+  return await docClient.send(
+    new QueryCommand({
+      TableName: "orders",
+      IndexName: "by_customer_created_at",
+      KeyConditionExpression:
+        "#customerId = :customerId AND begins_with(#createdAt, :monthPrefix)"
+    })
+  );
+}
+```
+
+This makes it possible to analyze:
+
+- duration for DynamoDB operations overall
+- latency over time for a specific housed query function such as `listCustomerOrders`
+
+Because DynamoDB spans are child spans, use `scope: "all"` when querying them. Newly added attributes such as `dynamodb.query_name` may require `/sql` until they are promoted into typed columns.
 
 ## Edge API
 
